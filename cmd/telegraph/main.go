@@ -38,8 +38,21 @@ func main() {
 	dieOn(err)
 	tlog.SetCommittee(comm)
 
+	// swap steps have their own flag help (`swap offer -h`)
+	if d, ok := docFor(os.Args[1]); ok && wantsHelp(args) && (os.Args[1] != "swap" || isHelpFlag(args[0])) {
+		printCmdHelp(out, d)
+		return
+	}
+	args = takeJSON(os.Args[1], args)
+
 	switch os.Args[1] {
 	case "help", "-h", "--help":
+		if len(args) == 1 {
+			if d, ok := docFor(args[0]); ok {
+				printCmdHelp(out, d)
+				return
+			}
+		}
 		help(out)
 	case "version", "--version":
 		out.Println("telegraph " + Version)
@@ -101,26 +114,9 @@ func help(p *ui.Printer) {
 }
 
 func usage(p *ui.Printer) {
-	cmds := [][]string{
-		{"init", "create key and local state"},
-		{"register --handle H --did D", "claim a handle"},
-		{"revoke --handle H", "revoke a handle"},
-		{"resolve H", "handle → DID"},
-		{"verify H", "resolve + checkpoint attestation"},
-		{"audit", "check signatures, chains, checkpoints"},
-		{"sync [--serve] [--genesis]", "publish and merge gossip"},
-		{"checkpoint", "issue one if leader (or overdue fallback)"},
-		{"pin [--rotate]", "show or advance the trust root"},
-		{"peers", "known peers and liveness"},
-		{"net", "network health"},
-		{"card --handle H", "print the bio card line"},
-		{"attest --line L", "sign a card"},
-		{"scan L", "verify a card line"},
-		{"swap STEP", "offer · accept · claim · reclaim · status"},
-		{"committee", "next checkpoint committee and peers"},
-		{"config [key]", "effective node settings (no secrets)"},
-		{"redact-dids [--apply]", "replace did:tg:<user id> DIDs this node holds"},
-		{"version", "print version"},
+	cmds := make([][]string, 0, len(cmdDocs))
+	for _, d := range cmdDocs {
+		cmds = append(cmds, []string{d.name, d.summary})
 	}
 	p.Printf("%s telegraph <command> [flags]\n\n", p.Bold("usage:"))
 	rows := make([][]string, len(cmds))
@@ -128,6 +124,7 @@ func usage(p *ui.Printer) {
 		rows[i] = []string{p.Cyan(c[0]), p.Dim(c[1])}
 	}
 	p.Table("  ", rows)
+	p.Printf("\n%s telegraph <command> -h   %s\n", p.Bold("help:"), p.Dim("flags and details; --json on resolve verify audit net committee config"))
 	p.Printf("\n%s TELEGRAPH_HOME TELEGRAPH_BOTS[_FILE] TELEGRAPH_CHANNELS TELEGRAPH_CHANNEL_URL\n"+
 		"     TELEGRAPH_PEERS TELEGRAPH_COMMITTEE TELEGRAPH_BOT_REGISTER TELEGRAPH_REGISTER_BOT TELEGRAPH_LOG_FORMAT TELEGRAPH_PIN\n"+
 		"     TELEGRAPH_BUS NO_COLOR\n"+

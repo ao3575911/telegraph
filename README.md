@@ -159,7 +159,7 @@ settings and hosts without systemd:
 | Command | |
 |---|---|
 | `init` | create the identity key and local state in `TELEGRAPH_HOME` (default `~/.telegraph`) |
-| `register --handle H --did D` · `revoke --handle H` | claim or revoke a handle |
+| `register --handle H [--did D]` · `revoke --handle H` | claim or revoke a handle; `--did` defaults to this key's `did:key` |
 | `resolve H` · `verify H` | resolve a handle; `verify` adds checkpoint attestation |
 | `audit` | verify signatures, chains and the latest checkpoint |
 | `sync [--serve] [--secs N] [--pin P \| --genesis] [--bot-register]` | publish and merge gossip after the mandatory pin check; `--pin` joins (bootstraps) a network, `--genesis` starts one with no checkpoint yet; `--bot-register` turns on the bot's `/register` |
@@ -169,6 +169,7 @@ settings and hosts without systemd:
 | `swap offer\|accept\|claim\|reclaim\|status` | atomic handle swap |
 | `committee` · `config [key]` | next checkpoint committee and peers · effective settings (no secrets) |
 | `version` | print the version |
+| `<command> -h` · `help <command>` | per-command flags and details; `--json` on `resolve`, `verify`, `audit`, `net`, `committee`, `config` |
 
 Output is coloured on a terminal. Colour is off when stdout is not a
 terminal or `NO_COLOR` is set; `CLICOLOR_FORCE=1` forces it on.

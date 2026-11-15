@@ -8,6 +8,12 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- CLI: every command has its own help (`telegraph <command> -h`, or
+  `telegraph help <command>`), generated from one table that also drives
+  the main usage list. `--json` on `resolve`, `verify`, `audit`, `net`,
+  `committee` and `config` prints machine-readable JSON on stdout with the
+  same exit codes.
+
 - **`TELEGRAPH_COMMITTEE`: committee allowlist (protocol-affecting:
   configure every node identically and restart them together).** Any key
   that wrote a single entry could be picked for the 2-of-3 checkpoint
@@ -30,6 +36,9 @@ uses [Semantic Versioning](https://semver.org/).
   can run from `~/.bashrc`. `TELEGRAPH_BOOT=0` skips a node.
 
 ### Changed
+
+- `telegraph register --did` is optional: it defaults to the `did:key` of
+  this node's Ed25519 key (`did:key:z6Mk…`, W3C did:key method).
 
 - `telegraph resolve` exits 1 when the handle is unregistered or revoked
   (it printed the warning but exited 0), so scripts can test it.
