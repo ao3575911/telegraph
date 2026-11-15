@@ -1,0 +1,18 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Command run, output (with NO_COLOR=1), and what you expected.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `telegraph version` and `go version`
+    validations:
+      required: true

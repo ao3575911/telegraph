@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: ["type:ci", "semver:patch"]
+    commit-message:
+      prefix: "ci"
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    labels: ["type:chore", "semver:patch"]
+    commit-message:
+      prefix: "chore"

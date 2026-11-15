@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version: "1.22"
+
+      - name: Build
+        run: go build ./...
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Test (race)
+        run: go test -race -count=1 ./...
+
+      - name: No external dependencies
+        run: |
+          if grep -q '^require' go.mod; then echo "go.mod must have no require"; exit 1; fi
+
+      - name: Simulation
+        run: bash docs/demo/simulate.sh
+
+      - name: Quickstart
+        run: |
+          go install ./cmd/telegraph
+          PATH="$(go env GOPATH)/bin:$PATH" bash docs/demo/quickstart.sh
+
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version: stable
+
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
