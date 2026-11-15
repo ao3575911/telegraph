@@ -28,6 +28,17 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Duplicate handles no longer split the network (protocol change:
+  upgrade every node together).** When two nodes registered the same
+  handle before syncing, each refused the other's register as a
+  "backdated takeover", so they kept different logs, resolved the handle
+  differently and failed verify and audit forever. Admission no longer
+  depends on arrival order: every verifiable entry is kept and the
+  ownership fold settles the handle identically on every node (earliest
+  register wins; timestamp, signer chain, then entry hash). Backdated
+  takeovers are still void: once a trusted checkpoint (at least two
+  committee signatures, naming chain heads) covers a register, an
+  uncovered register from another key dated at or before it never counts.
 - `scripts/node-join.sh` skipped registering the node's handle, because
   `resolve` exited 0 for an unregistered handle; the node never became an
   issuer and could not join the committee. It now checks the output too.

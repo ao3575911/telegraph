@@ -99,25 +99,34 @@ func TestBotRefusesTakeover(t *testing.T) {
 	}
 }
 
-// TestIngestRefusesBackdatedTakeover: a frame carrying a register dated
-// before the current owner's tenure is refused and never republished.
-func TestIngestRefusesBackdatedTakeover(t *testing.T) {
+// TestIngestBackdatedTakeoverIsVoid: a register dated before a finalised
+// owner's tenure is admitted (admission never depends on arrival order,
+// or nodes fork) but the fold ignores it: a trusted checkpoint covers the
+// owner's register and not the late one.
+func TestIngestBackdatedTakeoverIsVoid(t *testing.T) {
 	st := memStore()
 	_, a, _ := ed25519.GenerateKey(rand.Reader)
 	_, b, _ := ed25519.GenerateKey(rand.Reader)
+	_, c, _ := ed25519.GenerateKey(rand.Reader)
 	now := time.Now().Unix()
 	own, _ := tlog.New(tlog.Payload{Kind: tlog.KindRegister, Handle: "x@nym", DID: "did:a", TS: now - 100, Nonce: []byte{1}}, a, nil)
 	st.AppendReceived(own)
+	cp, _ := tlog.New(tlog.Payload{Kind: tlog.KindCheckpoint, TS: now - 50, Root: "r", Count: 1,
+		Comm:  [][]byte{a.Public().(ed25519.PublicKey), c.Public().(ed25519.PublicKey)},
+		Heads: []string{own.HashHex()}, Nonce: []byte{9}}, a, own.Hash)
+	cs, _ := tlog.CoSign(cp, c)
+	cp.CoSigs = append(cp.CoSigs, cs)
+	st.AppendReceived(cp)
 	sy := NewSyncer(nil, nil, st, b)
 	back, _ := tlog.New(tlog.Payload{Kind: tlog.KindRegister, Handle: "x@nym", DID: "did:b", TS: now - 200, Nonce: []byte{2}}, b, nil)
-	if _, err := sy.IngestText(oneFrame(t, back)); err == nil {
-		t.Fatal("backdated takeover admitted")
+	if ok, err := sy.IngestText(oneFrame(t, back)); err != nil || !ok {
+		t.Fatalf("verifiable entry not admitted: %v", err)
 	}
-	if len(st.Entries) != 1 || len(st.Pending()) != 0 {
-		t.Fatalf("store changed: %d entries, %d pending", len(st.Entries), len(st.Pending()))
+	if len(st.Entries) != 3 || len(st.Pending()) != 0 {
+		t.Fatalf("%d entries, %d pending", len(st.Entries), len(st.Pending()))
 	}
 	if e, _, _ := lookupHandle(st, "x@nym"); e.Payload.DID != "did:a" {
-		t.Fatal("owner changed")
+		t.Fatal("backdated register took a finalised handle")
 	}
 }
 
