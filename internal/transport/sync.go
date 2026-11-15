@@ -136,10 +136,9 @@ func (s *Syncer) IngestText(text string) (bool, error) {
 	if s.staging {
 		return s.Store.StageEntry(e), nil
 	}
-	if err := s.Store.CheckTakeover(e); err != nil {
-		s.Store.MarkSeen(e.HashHex()) // never republish it
-		return true, fmt.Errorf("entry %s for %q refused: %w", e.HashHex()[:8], clip(e.Payload.Handle, 64), err)
-	}
+	// Every verifiable entry is admitted whatever this node already
+	// holds: refusing by arrival order made nodes keep different logs.
+	// Competing registers are settled by the ownership fold instead.
 	if merged := s.Store.AppendReceived(e); merged {
 		s.MaybeCoSign()
 		return true, nil // PollWindow saves once per batch

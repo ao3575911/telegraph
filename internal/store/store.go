@@ -51,12 +51,6 @@ type Store struct {
 	byN      int
 }
 
-// ErrBackdatedTakeover rejects a register signed by a key other than the
-// handle's current owner whose timestamp is not after the owner's tenure
-// began. Under first-come ownership such an entry would retroactively
-// take the handle, so a node refuses to admit it (issue #15).
-var ErrBackdatedTakeover = errors.New("store: backdated register for a handle owned by another key")
-
 // HandleEntries returns copies of every entry for handle, in log order.
 func (s *Store) HandleEntries(handle string) []tlog.Entry {
 	if s.byHandle == nil || s.byN > len(s.Entries) {
@@ -77,20 +71,6 @@ func (s *Store) HandleEntries(handle string) []tlog.Entry {
 // Ownership folds handle over its indexed entries (see handshake.Resolve).
 func (s *Store) Ownership(handle string) handshake.Ownership {
 	return handshake.Resolve(handle, s.HandleEntries(handle), s.Entries)
-}
-
-// CheckTakeover reports ErrBackdatedTakeover when admitting e would hand
-// its handle to a new key retroactively. Registers that sort after the
-// owner's tenure began are void under the fold and are admitted.
-func (s *Store) CheckTakeover(e *tlog.Entry) error {
-	if e.Payload.Kind != tlog.KindRegister {
-		return nil
-	}
-	o := s.Ownership(e.Payload.Handle)
-	if o.Free || bytes.Equal(o.Owner, e.PubKey) || e.Payload.TS > o.Acquired {
-		return nil
-	}
-	return ErrBackdatedTakeover
 }
 
 // find returns the position of the entry with hash h (raw bytes), or -1.

@@ -35,6 +35,10 @@ func (s Status) String() string {
 // owner's own register, revoke or lock entries count. A register from any
 // other key is void, so a later (or louder) key cannot take a handle over.
 // A revoke by the owner frees the handle for the next register.
+// Concurrent registers from different keys are settled the same way on
+// every node: earliest first, except that a register a trusted checkpoint
+// has finalised beats any uncovered register not dated after it (see
+// finality.go).
 //
 // A lock only counts when its signer owned the handle immediately before
 // the lock (computed recursively over the strictly earlier entries), so a
@@ -98,6 +102,7 @@ func ownerOf(handle string, entries, all []tlog.Entry) result {
 			rel = append(rel, e)
 		}
 	}
+	rel = dropUnfinalTakeovers(rel, all)
 	tlog.SortCausal(rel, all)
 	return (&folder{rel: rel, memo: map[int]result{}}).fold(len(rel))
 }

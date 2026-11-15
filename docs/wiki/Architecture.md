@@ -25,9 +25,14 @@ handle. From then on only the owner's own register (to change the DID),
 revoke or lock counts; registers, revokes and locks from any other key are
 void. A revoke by the owner frees the handle for the next register. A swap
 moves ownership to the claimant, after which the same rule applies to the
-new owner. Because past timestamps are never rejected, a node also refuses
-to admit a register from another key dated at or before the current
-owner's tenure began (a backdated takeover); later ones are kept but void.
+new owner. Nodes admit every verifiable entry whatever they already hold
+(refusing by arrival order made two nodes that registered the same handle
+before syncing keep different logs forever), so concurrent registers are
+settled by the fold alone: the earliest wins. Because past timestamps are
+never rejected, a trusted checkpoint (two or more committee signatures,
+naming chain heads) makes the registers it covers final: an uncovered
+register from another key dated at or before a final one is void, whether
+it was concurrent and arrived late or was backdated to take the handle.
 0.2.x nodes still resolve last-writer-wins, so every node must run 0.3.0.
 The store persists entries in `TELEGRAPH_HOME/data.json` (written through a
 temporary file, fsync and rename) and tracks which local entries still need
