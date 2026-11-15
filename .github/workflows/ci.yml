@@ -12,9 +12,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v5.5.0
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: "1.22"
 
@@ -50,7 +50,7 @@ jobs:
           BINDIR="$RUNNER_TEMP/bin" sh scripts/install.sh
           "$RUNNER_TEMP/bin/telegraph" version
 
-      - uses: actions/setup-go@v5.5.0
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: stable
 
