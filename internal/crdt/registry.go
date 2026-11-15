@@ -8,9 +8,10 @@ import (
 	"github.com/ao3575911/telegraph/internal/tlog"
 )
 
-// Registry holds the full gossiped entry set (All) plus an LWW view of
-// plain register/revoke entries (Head). Resolution of handles runs
-// through handshake.Owner, which folds swap state deterministically.
+// Registry holds the full gossiped entry set (All) plus the newest plain
+// register/revoke entry per handle (Head), whoever signed it. Head is a
+// raw index, not ownership: resolve handles with Resolve, which runs
+// handshake.Owner (first-come ownership, owner-only updates, swaps).
 type Registry struct {
 	Head map[string]tlog.Entry
 	All  []tlog.Entry
@@ -68,7 +69,14 @@ func Merge(rs ...*Registry) *Registry {
 
 // Resolve returns the winning entry for a handle plus its swap status.
 func (r *Registry) Resolve(handle string) (tlog.Entry, handshake.Status, bool) {
-	pub, st, _ := handshake.Owner(handle, r.All)
+	return ResolveIn(handle, r.All, r.All)
+}
+
+// ResolveIn is Resolve over rel, a subset of all holding every entry for
+// handle (a per-handle index); all only orders same-second chains.
+func ResolveIn(handle string, rel, all []tlog.Entry) (tlog.Entry, handshake.Status, bool) {
+	o := handshake.Resolve(handle, rel, all)
+	pub, st := o.Pub, o.Status
 	if pub == nil {
 		return tlog.Entry{}, st, false
 	}
@@ -76,8 +84,8 @@ func (r *Registry) Resolve(handle string) (tlog.Entry, handshake.Status, bool) {
 	// that (owner via claim, no register yet) the newest entry the owner
 	// signed for this handle, i.e. the claim itself
 	var plain, owned []*tlog.Entry
-	for i := range r.All {
-		e := &r.All[i]
+	for i := range rel {
+		e := &rel[i]
 		if e.Payload.Handle != handle || !bytes.Equal(e.PubKey, pub) {
 			continue
 		}
@@ -93,7 +101,7 @@ func (r *Registry) Resolve(handle string) (tlog.Entry, handshake.Status, bool) {
 	if len(pick) == 0 {
 		return tlog.Entry{}, st, false
 	}
-	tlog.SortCausal(pick, r.All)
+	tlog.SortCausal(pick, all)
 	return *pick[len(pick)-1], st, true
 }
 
