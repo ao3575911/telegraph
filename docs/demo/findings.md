@@ -17,17 +17,24 @@ Each is fixed in 0.1.0 and covered by a test.
 | audit | Short or empty hashes in hostile input could panic the auditor (`[:8]` slicing). | All short ids go through a length-safe helper. |
 | CLI | Commands on an uninitialised home failed with a raw file error. | They now say to run `telegraph init`. |
 
+## Changed in 0.2.0
+
+| Area | Problem | Fix |
+|---|---|---|
+| checkpoints | Coverage was by timestamp, so an entry stamped before a checkpoint but delivered to the issuer after it broke the checkpoint's root on other nodes ([#1](https://github.com/ao3575911/telegraph/issues/1)). | Checkpoints name the head of each issuer chain they cover (`Heads`); auditors recompute over those chains, and later entries are reported as uncovered or late instead of failing the root. |
+| sync | A node with an empty store could not join a network that had no checkpoint yet ([#2](https://github.com/ao3575911/telegraph/issues/2)). | `sync --genesis` starts or joins such a network; it is refused when a pin is set. |
+| checkpoints | No checkpoint was issued while the committee leader was offline ([#3](https://github.com/ao3575911/telegraph/issues/3)). | Committee members 2 and 3 issue in the leader's place once the oldest unchecked entry is `Interval` + 1 h or + 2 h old. |
+| bot | Direct messages to the bot got no answer, and their text was handed to the gossip parser. | Private chats are answered (`/start`, `/help`, `/resolve`, `/pin`, `/status`), rate-limited per chat, and never ingested. |
+
 ## Open issues
 
-- Coverage is by timestamp. An entry stamped before a checkpoint but
-  delivered to the issuer after it makes the checkpoint fail audit on other
-  nodes (`root`/`count` mismatch) until the next checkpoint covers it.
-- A node with an empty store cannot `sync` without `--pin`. On a brand-new
-  network with no checkpoint yet, a node must register a handle before its
-  first sync. Found while recording the sync demo; the error now says so.
-- If the committee leader is offline, no checkpoint is issued for that log
-  state; there is no fallback issuer yet.
 - After a swap the new owner has no DID until they `register` the handle;
-  `resolve` shows this explicitly.
+  `resolve` shows this explicitly
+  ([#4](https://github.com/ao3575911/telegraph/issues/4)).
 - The file bus is for local testing and demos only. It has no locking
-  beyond single `O_APPEND` writes and is not a network transport.
+  beyond single `O_APPEND` writes and is not a network transport
+  ([#5](https://github.com/ao3575911/telegraph/issues/5)).
+- The Telegram client is tested against a fake Bot API, not a live bot, in
+  CI ([#6](https://github.com/ao3575911/telegraph/issues/6)).
+- 0.1.0 nodes do not know the `Heads` field, so they reject checkpoints
+  issued by 0.2.0 nodes. Upgrade every node in a network together.

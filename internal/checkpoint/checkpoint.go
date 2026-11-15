@@ -155,27 +155,31 @@ func Covered(log []tlog.Entry, ts int64) []tlog.Entry {
 	return out
 }
 
-// BuildFor builds a checkpoint at the current time iff this node leads
-// the deterministic committee. Returns (nil, nil) when it's someone
-// else's duty.
-func BuildFor(log []tlog.Entry, prevCPHex string, priv ed25519.PrivateKey,
-	prevHash []byte) (*tlog.Entry, error) {
-	return BuildForAt(Covered(log, time.Now().Unix()), prevCPHex, time.Now().Unix(), priv, prevHash)
-}
-
-// BuildForAt builds a checkpoint over log at ts iff this node is the
-// committee leader (comm[0], closest to the target). One issuer per log
-// state avoids sibling checkpoints; the other members co-sign.
-func BuildForAt(log []tlog.Entry, prevCPHex string, ts int64, priv ed25519.PrivateKey,
-	prevHash []byte) (*tlog.Entry, error) {
+// BuildAt builds a checkpoint at ts over every issuer chain in entries
+// (see ChainHeads) when this node's committee rank is between 0 and
+// maxRank. Rank 0 is the leader; ranks 1 and 2 issue only as fallbacks
+// (see Due). It returns (nil, rank, nil) when it is not this node's turn.
+func BuildAt(entries []tlog.Entry, prevCPHex string, ts int64, maxRank int,
+	priv ed25519.PrivateKey, prevHash []byte) (*tlog.Entry, int, error) {
+	heads := ChainHeads(entries)
+	log, _ := CoverHeads(entries, heads)
 	if len(log) == 0 {
-		return nil, nil
+		return nil, -1, nil
+	}
+	pub := []byte(priv.Public().(ed25519.PublicKey))
+	rank := Rank(log, pub)
+	if rank < 0 || rank > maxRank {
+		return nil, rank, nil
 	}
 	root := merkle.Root(Hashes(log))
 	comm := SelectCommittee(Target(root, int64(len(log))), Issuers(log))
-	pub := []byte(priv.Public().(ed25519.PublicKey))
-	if len(comm) == 0 || !bytes.Equal(comm[0], pub) {
-		return nil, nil
+	nonce := make([]byte, 16)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, rank, err
 	}
-	return Build(root, int64(len(log)), comm, prevCPHex, ts, priv, prevHash)
+	cp, err := tlog.New(tlog.Payload{
+		Kind: tlog.KindCheckpoint, TS: ts, Root: root, Count: int64(len(log)),
+		Comm: comm, PrevCP: prevCPHex, Heads: heads, Nonce: nonce,
+	}, priv, prevHash)
+	return cp, rank, err
 }

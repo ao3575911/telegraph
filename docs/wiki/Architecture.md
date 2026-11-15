@@ -22,21 +22,30 @@ local entries still need publishing.
 
 ## Checkpoints (`internal/checkpoint`)
 
-A checkpoint commits to the Merkle root and count of all entries stamped
-strictly before its timestamp, plus the previous checkpoint's hash.
+A checkpoint commits to the Merkle root and count of the entries it
+covers, plus the previous checkpoint's hash. Since 0.2.0 it also names the
+head of every issuer chain it covers (`Heads`): the covered set is each
+chain from genesis to its head. An entry that reaches an auditor but not
+the issuer is therefore uncovered (reported as late if it is stamped
+before the checkpoint) rather than breaking the root. Checkpoints without
+`Heads` (0.1.0) cover the entries stamped strictly before their timestamp.
 
 - **Committee.** The target is `sha256("telegraph/cp/<root>/<count>")`. The
   three issuer keys closest to the target by symmetric ring distance form
   the committee, so it rotates with the log and cannot be chosen by any one
   issuer.
 - **Quorum.** The closest member (the leader) issues; the others co-sign
-  when they sync. A checkpoint is valid with 2 of 3 committee signatures (1
+  when they sync. If the leader is offline, the second member issues once
+  the oldest uncheckpointed entry is `Interval` (6 h) + 1 h old, and the
+  third at + 2 h. Serving nodes check every 10 minutes. A checkpoint is valid with 2 of 3 committee signatures (1
   of 1 for a single-issuer network). Until then it is held as pending.
 - **Audit.** `telegraph audit` recomputes the root and count, checks the
   committee and signatures, and walks the checkpoint chain for forks and
   gaps.
 - **Pins.** A new node trusts only a checkpoint hash shared out of band
   (`sync --pin`). A dump that does not contain it is rejected as a whole.
+  Nodes of a brand-new network, before any checkpoint exists, use
+  `sync --genesis` instead.
   `pin --rotate` advances the pin to the latest quorum-verified checkpoint.
 
 ## Swaps and cards (`internal/handshake`)
@@ -58,7 +67,11 @@ VERIFIED, unattested, or STALE after a transfer.
 The Telegram transport uses only the Bot API (`getUpdates`, `sendMessage`).
 Entries are framed into messages and posted to every configured channel;
 nodes poll, ingest, co-sign pending checkpoints and send heartbeats.
-`sync --serve` also answers `/dump` requests so new nodes can bootstrap.
+`sync --serve` also answers `/dump` requests so new nodes can bootstrap,
+and replies to direct messages (`/start`, `/help`, `/resolve`, `/pin`,
+`/status`) from the local store. Private-chat text is never parsed as a
+frame, so nothing typed to the bot can enter the log; replies use HTML with
+escaped input and are rate-limited per chat (5 per 30 s).
 The file bus (`TELEGRAPH_BUS`) implements the same interface on a local
 append-only file for tests and demos.
 

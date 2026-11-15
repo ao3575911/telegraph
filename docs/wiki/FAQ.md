@@ -17,6 +17,19 @@ reject mismatches, forks and gaps.
 It is given a checkpoint hash (a pin) out of band and accepts a peer's dump
 only if it contains that checkpoint.
 
+**How do I start a brand-new network?**
+There is no pin until the first checkpoint, so the first nodes run
+`telegraph sync --genesis`. After the first checkpoint, `telegraph pin`
+prints the pin to share.
+
+**What if the checkpoint leader goes offline?**
+The second committee member issues after the leader is an hour overdue,
+the third after two hours. The returning leader accepts their checkpoint.
+
+**What can I ask the bot?**
+`/start`, `/help`, `/resolve handle@nym`, `/pin` and `/status` in a direct
+message. Nothing sent to the bot is written to the log.
+
 **Can a swap leave one side without a handle?**
 Not if both sides sync before their locks expire. The responder's lock
 expires 48 hours before the initiator's, so the responder always has time
@@ -30,5 +43,9 @@ The DID belonged to the previous owner. The new owner sets one with
 Go 1.22 or later. There are no third-party dependencies.
 
 **Is the Telegram transport tested?**
-The test suite and demos use the file bus. The Bot API client is small
-(`getUpdates`, `sendMessage`) but is not exercised in CI.
+The Bot API client is tested against a fake Bot API server in CI. Multi-node
+tests and demos use the file bus; there is no live-bot test in CI.
+
+**Can 0.1.0 and 0.2.0 nodes share a network?**
+No. 0.1.0 nodes do not know the checkpoint `Heads` field and reject 0.2.0
+checkpoints. Upgrade every node together.

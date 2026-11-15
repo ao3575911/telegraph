@@ -181,6 +181,12 @@ func doAudit(dir string) {
 	if rep.Uncovered > 0 {
 		out.Info("%d entries newer than the checkpoint (normal)", rep.Uncovered)
 	}
+	if rep.Late > 0 {
+		out.Info("%d of them stamped before it but delivered late: not attested until the next checkpoint", rep.Late)
+	}
+	if rep.Missing > 0 {
+		out.Warn("%d entries the checkpoint covers have not arrived yet: sync again", rep.Missing)
+	}
 	switch {
 	case rep.Diverged:
 		out.Fail("DIVERGED: fork or withholding detected")
@@ -203,6 +209,7 @@ func doSync(dir string, args []string) {
 	bus := fs.String("bus", envOr("TELEGRAPH_BUS", ""), "local file bus instead of Telegram (testing, demos)")
 	pinStr := fs.String("pin", envOr("TELEGRAPH_PIN", ""), "genesis checkpoint pin (first sync)")
 	cpOnly := fs.Bool("checkpoint-only", false, "attempt one checkpoint then exit")
+	genesis := fs.Bool("genesis", false, "start or join a network that has no checkpoint yet (no pin)")
 	_ = fs.Parse(args)
 
 	var conns []transport.Conn
@@ -227,6 +234,9 @@ func doSync(dir string, args []string) {
 		}
 	}
 	st := mustStore(dir)
+	if *genesis && (st.Pin != "" || *pinStr != "") {
+		die(errors.New("--genesis is for a network with no checkpoint yet: drop it when you have a pin"))
+	}
 	if st.Pin == "" && *pinStr != "" && len(st.Entries) == 0 {
 		st.SetPin(*pinStr)
 		dieOn(st.Save())
@@ -234,23 +244,35 @@ func doSync(dir string, args []string) {
 		die(fmt.Errorf("--pin %s conflicts with local pin %s", short(*pinStr), short(st.Pin)))
 	}
 	sy := transport.NewSyncer(conns, channels, st, mustKey(dir))
+	if *bus == "" {
+		sy.DM = &transport.Responder{Version: "v" + Version, Channels: channels}
+	}
 
 	if *cpOnly {
-		cp, err := sy.IssueCheckpoint()
+		cp, rank, err := sy.IssueCheckpointRank(false)
 		if errors.Is(err, transport.ErrAlreadyCheckpointed) {
 			out.Info("current log already checkpointed")
 			return
 		}
 		dieOn(err)
 		if cp == nil {
-			out.Info("not committee leader: will co-sign on sync")
+			switch {
+			case rank < 0:
+				out.Info("not on the committee for this log: nothing to do")
+			default:
+				out.Info("not committee leader: will co-sign on sync (fallback #%d if the leader is overdue)", rank)
+			}
 			return
 		}
 		need := 1
 		if len(cp.Payload.Comm) > 1 {
 			need = tlog.RequiredCPSigs
 		}
-		out.OK("checkpoint %s issued", out.Cyan(short(cp.HashHex())))
+		if rank > 0 {
+			out.OK("checkpoint %s issued as fallback #%d (leader overdue)", out.Cyan(short(cp.HashHex())), rank)
+		} else {
+			out.OK("checkpoint %s issued", out.Cyan(short(cp.HashHex())))
+		}
 		out.KV([][2]string{
 			{"root", short(cp.Payload.Root)},
 			{"entries", fmt.Sprint(cp.Payload.Count)},
@@ -258,9 +280,9 @@ func doSync(dir string, args []string) {
 		})
 		return
 	}
-	if len(st.Entries) == 0 {
+	if len(st.Entries) == 0 && !*genesis {
 		if st.Pin == "" {
-			die(errors.New("empty store: pass --pin <checkpoint-hash> to bootstrap, or register a handle first to join a network that has no checkpoint yet"))
+			die(errors.New("empty store: pass --pin <checkpoint-hash> to bootstrap, or --genesis to start or join a network that has no checkpoint yet"))
 		}
 		out.Info("bootstrapping with pin %s…", short(st.Pin))
 		n, err := sy.Bootstrap(*win)

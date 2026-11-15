@@ -43,7 +43,6 @@ for n in alice bob carol alice bob carol; do step ok $n sync --secs 0; done
 SYNC1="alice $(entries alice) · bob $(entries bob) · carol $(entries carol)"
 step ok alice resolve bob@nym
 step ok carol audit
-sleep 1 # checkpoints cover entries stamped before the current second
 for n in alice bob carol; do
 	step ok $n checkpoint
 	case $LAST_OUT in *issued*) LEADER=$n ;; esac
@@ -95,6 +94,12 @@ FRESH=$LAST_OUT
 wait
 step ok dave verify carol@nym
 step err dave scan "$LINE" # card predates the swap, so it must read STALE
+# A fifth node starts a separate, brand-new network: no pin exists yet.
+erin() { TELEGRAPH_HOME="$TG_DEMO/erin" TELEGRAPH_BUS="$TG_DEMO/bus2.jsonl" telegraph "$@"; }
+step ok erin init
+step err erin sync --secs 0 # empty store and no pin: refuses to guess
+step ok erin sync --secs 0 --genesis
+step err erin sync --secs 0 --genesis --pin "$PIN" # genesis and a pin conflict
 
 {
 	cat <<HDR
@@ -113,7 +118,7 @@ Three nodes (alice, bob, carol) ran as separate processes with separate
 | Steps run | $((pass + fail)) |
 | Result | ✓ $pass as expected · ✗ $fail unexpected |
 | Total command time | ${total_ms} ms |
-| Nodes | 3, plus 1 late joiner (dave) |
+| Nodes | 3, plus 1 late joiner (dave) and 1 genesis node on its own bus (erin) |
 | Entries per node after first sync | $SYNC1 |
 | Entries per node at the end | $FINAL |
 | Checkpoint leader | ${LEADER:-none} |
@@ -124,7 +129,9 @@ Three nodes (alice, bob, carol) ran as separate processes with separate
 "Expected" includes refusals the CLI should make: registering without
 \`--did\`, scanning a card before it is attested, claiming before the
 counterparty has locked, reclaiming before expiry, using a node before
-\`init\`, and scanning a card issued before its handle was swapped (STALE).
+\`init\`, scanning a card issued before its handle was swapped (STALE),
+syncing an empty store with neither \`--pin\` nor \`--genesis\`, and
+combining \`--genesis\` with a pin.
 
 ## Steps
 
