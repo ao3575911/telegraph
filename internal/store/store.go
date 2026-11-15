@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/ao3575911/telegraph/internal/crdt"
@@ -33,7 +34,30 @@ type Store struct {
 	// node-local and never gossiped.
 	Custody map[string]int64 `json:"custody,omitempty"`
 
-	staged []tlog.Entry
+	staged    []tlog.Entry
+	stagedSet map[string]bool
+
+	// idx maps raw entry hash to its position in Entries, covering
+	// Entries[:idxN]. It is built lazily and extended incrementally, so
+	// admission is O(1) instead of a scan of the whole log. Entries must
+	// only grow (AppendEntry); a shorter slice triggers a rebuild.
+	idx  map[string]int
+	idxN int
+}
+
+// find returns the position of the entry with hash h (raw bytes), or -1.
+func (s *Store) find(h []byte) int {
+	if s.idx == nil || s.idxN > len(s.Entries) {
+		s.idx, s.idxN = make(map[string]int, len(s.Entries)), 0
+	}
+	for ; s.idxN < len(s.Entries); s.idxN++ {
+		s.idx[string(s.Entries[s.idxN].Hash)] = s.idxN
+	}
+	i, ok := s.idx[string(h)]
+	if !ok || i >= len(s.Entries) || !bytes.Equal(s.Entries[i].Hash, h) {
+		return -1
+	}
+	return i
 }
 
 func Open(path string) (*Store, error) {
@@ -61,17 +85,40 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-// Save writes the store to Path. A Store with no Path is in-memory
-// (tests, embedding) and Save is a no-op.
+// Save writes the store to Path atomically: a temporary file in the
+// same directory is written, synced and renamed over Path, so a crash or
+// full disk mid-write leaves the previous data.json intact. A Store with
+// no Path is in-memory (tests, embedding) and Save is a no-op.
 func (s *Store) Save() error {
 	if s.Path == "" {
 		return nil
 	}
-	b, err := json.MarshalIndent(s, "", "  ")
+	b, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.Path, b, 0o600)
+	f, err := os.CreateTemp(filepath.Dir(s.Path), filepath.Base(s.Path)+".tmp*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, err = f.Write(b)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, 0o600)
+	}
+	if err == nil {
+		err = os.Rename(tmp, s.Path)
+	}
+	if err != nil {
+		os.Remove(tmp)
+	}
+	return err
 }
 
 // AppendEntry admits a verified entry. It returns true when the store
@@ -80,7 +127,7 @@ func (s *Store) Save() error {
 // still short of quorum are kept so committee members can co-sign them.
 func (s *Store) AppendEntry(e *tlog.Entry) bool {
 	h := e.HashHex()
-	if s.has(h) {
+	if s.find(e.Hash) >= 0 {
 		return s.mergeCosigs(e)
 	}
 	if err := e.Verify(); err != nil && !tlog.IsPendingQuorum(err) {
@@ -99,15 +146,6 @@ func (s *Store) AppendReceived(e *tlog.Entry) bool {
 	ok := s.AppendEntry(e)
 	s.MarkSeen(e.HashHex())
 	return ok
-}
-
-func (s *Store) has(hashHex string) bool {
-	for i := range s.Entries {
-		if s.Entries[i].HashHex() == hashHex {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *Store) mergeCosigs(e *tlog.Entry) bool {
@@ -179,19 +217,21 @@ func (s *Store) Registry() (*crdt.Registry, error) {
 }
 
 func (s *Store) CoSignEntry(hashHex string, cs tlog.Cosig) bool {
-	for i := range s.Entries {
-		if s.Entries[i].HashHex() != hashHex {
-			continue
-		}
-		for _, ex := range s.Entries[i].CoSigs {
-			if bytes.Equal(ex.Pub, cs.Pub) {
-				return false
-			}
-		}
-		s.Entries[i].CoSigs = append(s.Entries[i].CoSigs, cs)
-		return true
+	raw, err := hex.DecodeString(hashHex)
+	if err != nil {
+		return false
 	}
-	return false
+	i := s.find(raw)
+	if i < 0 {
+		return false
+	}
+	for _, ex := range s.Entries[i].CoSigs {
+		if bytes.Equal(ex.Pub, cs.Pub) {
+			return false
+		}
+	}
+	s.Entries[i].CoSigs = append(s.Entries[i].CoSigs, cs)
+	return true
 }
 
 func (s *Store) LatestCheckpoint() *tlog.Entry {
@@ -216,16 +256,17 @@ func (s *Store) SetPin(hashHex string) {
 
 // ---- staging: transactional bootstrap ----
 
-func (s *Store) BeginStage()          { s.staged = nil }
+func (s *Store) BeginStage()          { s.staged, s.stagedSet = nil, nil }
 func (s *Store) Staged() []tlog.Entry { return s.staged }
 
 func (s *Store) StageEntry(e *tlog.Entry) bool {
-	h := e.HashHex()
-	for i := range s.staged {
-		if s.staged[i].HashHex() == h {
-			return false
-		}
+	if s.stagedSet == nil {
+		s.stagedSet = map[string]bool{}
 	}
+	if s.stagedSet[string(e.Hash)] {
+		return false
+	}
+	s.stagedSet[string(e.Hash)] = true
 	s.staged = append(s.staged, *e)
 	return true
 }
@@ -237,8 +278,8 @@ func (s *Store) CommitStage() int {
 			n++
 		}
 	}
-	s.staged = nil
+	s.staged, s.stagedSet = nil, nil
 	return n
 }
 
-func (s *Store) RollbackStage() { s.staged = nil }
+func (s *Store) RollbackStage() { s.staged, s.stagedSet = nil, nil }

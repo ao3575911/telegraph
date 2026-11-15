@@ -3,6 +3,8 @@ package store
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -68,5 +70,38 @@ func TestPendingCheckpointCollectsCosigs(t *testing.T) {
 	signed.CoSigs = []tlog.Cosig{bogus}
 	if st.AppendReceived(&signed) {
 		t.Fatal("non-member co-signature merged")
+	}
+}
+
+func TestStoreIndexAndAtomicSave(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(filepath.Join(dir, "data.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	var prev []byte
+	for i := 0; i < 50; i++ {
+		e, err := tlog.New(tlog.Payload{Kind: tlog.KindRegister, Handle: fmt.Sprintf("h%d@nym", i), DID: "did:key:x", TS: int64(i + 1)}, priv, prev)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !s.AppendEntry(e) || s.AppendEntry(e) {
+			t.Fatalf("entry %d: first append must add, second must not", i)
+		}
+		prev = e.Hash
+	}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, "*.tmp*")); len(left) != 0 {
+		t.Fatalf("temporary files left behind: %v", left)
+	}
+	r, err := Open(s.Path)
+	if err != nil || len(r.Entries) != 50 {
+		t.Fatalf("reopen: %d entries, %v", len(r.Entries), err)
+	}
+	if r.AppendEntry(&r.Entries[10]) {
+		t.Fatal("reloaded store re-admitted a known entry")
 	}
 }
