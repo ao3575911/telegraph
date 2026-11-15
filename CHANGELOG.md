@@ -14,6 +14,10 @@ uses [Semantic Versioning](https://semver.org/).
   `/help`, unknown-handle replies, command menu and bot descriptions point
   users there, with an Open button, instead of the generic CLI text.
   Ignored when the node registers itself. `telegraph config` shows it.
+- `scripts/telegraph-boot.sh`: starts the supervisor for each
+  `~/.config/telegraph/*.env` node that is not already running, for hosts
+  with no systemd, launchd or cron. Idempotent and silent with `-q`, so it
+  can run from `~/.bashrc`. `TELEGRAPH_BOOT=0` skips a node.
 
 ### Changed
 
@@ -27,6 +31,10 @@ uses [Semantic Versioning](https://semver.org/).
 - `scripts/node-join.sh` skipped registering the node's handle, because
   `resolve` exited 0 for an unregistered handle; the node never became an
   issuer and could not join the committee. It now checks the output too.
+- `scripts/node-join.sh` and `scripts/install-service.sh` ignored
+  `TELEGRAPH_BIN` in the node's env file and ran whatever `telegraph` was
+  on `PATH`. They now use it, and the systemd unit reads it per node.
+  `install-service.sh` also no longer fails when `$USER` is unset.
 
 ## [0.3.0] - Unreleased
 

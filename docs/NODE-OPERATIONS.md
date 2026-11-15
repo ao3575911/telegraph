@@ -78,6 +78,24 @@ at boot with whatever the host offers, for example cron:
 @reboot /bin/sh /path/to/telegraph/scripts/telegraph-supervise.sh /home/you/.config/telegraph/node1.env >>/home/you/telegraph-node1.log 2>&1
 ```
 
+No boot hook at all (some sandboxes only run your shell startup files)?
+`scripts/telegraph-boot.sh` starts the supervisor for every
+`~/.config/telegraph/*.env` that has a token, unless one is already running
+for it, so it is safe to call from `~/.bashrc`:
+
+```sh
+[ -r ~/telegraph/scripts/telegraph-boot.sh ] && sh ~/telegraph/scripts/telegraph-boot.sh -q
+```
+
+Nodes then come back the first time a shell opens after a restart, not at
+boot itself. `TELEGRAPH_BOOT=0` in an env file leaves that node out. Logs
+go to `$TELEGRAPH_HOME/NODE.log`.
+
+Every script (`node-join.sh`, `install-service.sh`, the supervisor and the
+systemd unit) runs `TELEGRAPH_BIN` from the node's env file if set, else
+`telegraph` on `PATH`, else `~/go/bin/telegraph`, so nodes on one host can
+run different builds.
+
 ### What the node does on failure
 
 - Telegram timeouts, proxy hangs, 5xx and 429s: the poll backs off

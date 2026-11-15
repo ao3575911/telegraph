@@ -5,6 +5,8 @@
 # comes back after a reboot. No sudo. Uses systemd --user on Linux,
 # launchd on macOS. Settings come from ~/.config/telegraph/NODE.env,
 # created from a template (mode 0600) if missing: fill in the token there.
+# The binary is TELEGRAPH_BIN from NODE.env if set, else telegraph on PATH,
+# else ~/go/bin/telegraph; the systemd unit reads TELEGRAPH_BIN per node.
 set -eu
 
 node=${1:-node1}
@@ -12,8 +14,6 @@ case $node in *[!a-zA-Z0-9_-]*|'') echo "node name: letters, digits, _ and - onl
 here=$(cd "$(dirname "$0")" && pwd)
 cfg="${XDG_CONFIG_HOME:-$HOME/.config}/telegraph"
 envfile="$cfg/$node.env"
-bin=$(command -v telegraph || echo "$HOME/go/bin/telegraph")
-[ -x "$bin" ] || { echo "telegraph not found: go install github.com/ao3575911/telegraph/cmd/telegraph@latest" >&2; exit 1; }
 
 umask 077
 mkdir -p "$cfg"
@@ -39,6 +39,16 @@ fi
 chmod 600 "$envfile"
 grep -q '^TELEGRAPH_BOTS=.\+' "$envfile" || grep -q '^TELEGRAPH_BOTS_FILE=.\+' "$envfile" ||
 	{ echo "$envfile has no TELEGRAPH_BOTS token yet" >&2; exit 1; }
+# TELEGRAPH_BIN only; the subshell keeps the token out of this script.
+envbin=$(
+	set -a
+	# shellcheck disable=SC1090
+	. "$envfile" >/dev/null 2>&1
+	printf %s "${TELEGRAPH_BIN:-}"
+)
+defbin=$(command -v telegraph || echo "$HOME/go/bin/telegraph")
+bin=${envbin:-$defbin}
+[ -x "$bin" ] || { echo "telegraph not found at $bin: set TELEGRAPH_BIN in $envfile or go install github.com/ao3575911/telegraph/cmd/telegraph@latest" >&2; exit 1; }
 
 case $(uname -s) in
 Darwin)
@@ -60,12 +70,13 @@ Darwin)
 	fi
 	unit="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 	mkdir -p "$unit"
-	sed "s|%h/go/bin/telegraph|$bin|" "$here/service/telegraph@.service" > "$unit/telegraph@.service"
+	sed "s|%h/go/bin/telegraph|$defbin|" "$here/service/telegraph@.service" > "$unit/telegraph@.service"
 	systemctl --user daemon-reload
 	systemctl --user enable --now "telegraph@$node"
-	if [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != yes ]; then
-		loginctl enable-linger "$USER" 2>/dev/null ||
-			echo "note: run 'loginctl enable-linger $USER' (may need an admin) so the node starts at boot without a login"
+	user=${USER:-$(id -un)}
+	if [ "$(loginctl show-user "$user" -p Linger --value 2>/dev/null)" != yes ]; then
+		loginctl enable-linger "$user" 2>/dev/null ||
+			echo "note: run 'loginctl enable-linger $user' (may need an admin) so the node starts at boot without a login"
 	fi
 	echo "installed telegraph@$node"
 	echo "  status: systemctl --user status telegraph@$node"

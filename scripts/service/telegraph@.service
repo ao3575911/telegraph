@@ -21,7 +21,9 @@ Type=simple
 EnvironmentFile=%h/.config/telegraph/%i.env
 # HTTP/2 streams were seen to hang behind egress proxies.
 Environment=GODEBUG=http2client=0
-ExecStart=%h/go/bin/telegraph sync --serve
+# TELEGRAPH_BIN in the env file picks a per-node binary; otherwise the
+# default below (install-service.sh writes the one it found).
+ExecStart=/bin/sh -c 'exec "$${TELEGRAPH_BIN:-%h/go/bin/telegraph}" sync --serve'
 # telegraph saves its store and exits 0 on SIGTERM.
 KillSignal=SIGTERM
 TimeoutStopSec=60
