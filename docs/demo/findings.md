@@ -37,6 +37,14 @@ running the live node; details in [TELEGRAM.md](https://github.com/ao3575911/tel
 | bot | Long polls hung behind an egress proxy (HTTP/2), and the token appeared in logged errors. | HTTP/1.1 transport, per-request deadline, backoff with jitter, redacted and rate-limited error logs. |
 | bot | `/help` showed shell commands; the menu lacked commands and listed `/dump`; any group could request a dump. | One command table for `/help` and the menu, Telegram-native replies with buttons, gossip only on configured channels. |
 
+## Changed in 0.2.2
+
+| Area | Problem | Fix |
+|---|---|---|
+| bot | People without a bot token could not get a handle onto the network; the CLI only writes the local log until `sync`. | `/register name [did]` and `/revoke name` in a private chat: the node signs and gossips the entry (custodial, opt-in with `--bot-register`), and only the registering Telegram account can change or revoke it. |
+| CLI | `register` accepted any handle string. | The CLI and bot share one handle rule (one `@`, no spaces, at most 64 characters). |
+| CI | A failing simulation printed only its counts. | Unexpected steps are printed to the log. |
+
 ## Open issues
 
 - After a swap the new owner has no DID until they `register` the handle;
@@ -47,5 +55,12 @@ running the live node; details in [TELEGRAM.md](https://github.com/ao3575911/tel
   ([#5](https://github.com/ao3575911/telegraph/issues/5)).
 - The Telegram client is tested against a fake Bot API, not a live bot, in
   CI ([#6](https://github.com/ao3575911/telegraph/issues/6)).
+- Plain registers are last-writer-wins across keys, so any key can take
+  over a handle with a later register
+  ([#15](https://github.com/ao3575911/telegraph/issues/15)).
+- Bot registration is custodial; a self-custody path is planned
+  ([#16](https://github.com/ao3575911/telegraph/issues/16)).
+- The simulation fails intermittently in CI
+  ([#17](https://github.com/ao3575911/telegraph/issues/17)).
 - 0.1.0 nodes do not know the `Heads` field, so they reject checkpoints
   issued by 0.2.0 nodes. Upgrade every node in a network together.

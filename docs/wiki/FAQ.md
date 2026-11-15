@@ -37,7 +37,9 @@ Yes, in a private chat with a bot whose node runs with `--bot-register`:
 `/register adz` gives `adz@nym`. It is custodial: the node's key owns the
 handle and only your Telegram account can change or revoke it through that
 node. With the CLI (`telegraph register --handle adz@nym --did did:key:adz`,
-then `telegraph sync`) your own key owns it.
+then `telegraph sync`) your own key owns it. Until
+[#15](https://github.com/ao3575911/telegraph/issues/15) is fixed, any key
+can overwrite a handle with a later register, whichever path you use.
 
 **How do I install without Go?**
 `curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh`

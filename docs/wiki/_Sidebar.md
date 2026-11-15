@@ -3,3 +3,4 @@
 - [[Architecture]]
 - [[CLI reference|CLI-reference]]
 - [[FAQ]]
+- [Telegram bot](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md)
