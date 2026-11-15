@@ -120,10 +120,10 @@ func doResolve(dir, handle string) {
 	switch {
 	case !ok:
 		out.Warn("%s unregistered", out.Bold(handle))
-		return
+		os.Exit(1)
 	case e.Payload.Kind == tlog.KindRevoke:
 		out.Warn("%s revoked", out.Bold(handle))
-		return
+		os.Exit(1)
 	}
 	did := e.Payload.DID
 	if e.Payload.Kind != tlog.KindRegister {
@@ -239,8 +239,11 @@ func doSync(dir string, args []string) {
 	genesis := fs.Bool("genesis", false, "start or join a network that has no checkpoint yet (no pin)")
 	botReg := fs.Bool("bot-register", envOr("TELEGRAPH_BOT_REGISTER", "") == "1",
 		"let Telegram users /register handles, signed by this node's key (custodial)")
+	regBotFlag := fs.String("register-bot", "", "without --bot-register: the bot (@username) users are sent to for /register and /card")
 	_ = fs.Parse(args)
 	chURL, err := channelURL()
+	dieOn(err)
+	regBot, err := registerBot(*regBotFlag)
 	dieOn(err)
 	peers, err := peerKeys()
 	dieOn(err)
@@ -286,7 +289,7 @@ func doSync(dir string, args []string) {
 	priv := mustKey(dir)
 	sy := transport.NewSyncer(conns, channels, st, priv)
 	if *bus == "" {
-		sy.DM = &transport.Responder{Version: "v" + Version, ChannelURL: chURL}
+		sy.DM = &transport.Responder{Version: "v" + Version, ChannelURL: chURL, RegisterBot: regBot}
 		if *botReg {
 			sy.DM.Priv = priv
 		}
@@ -338,7 +341,7 @@ func doSync(dir string, args []string) {
 		out.Info("serving: publish · poll · checkpoint · heartbeat")
 		slog.Info("node starting", "version", Version, "key", short(fmt.Sprintf("%x", pubOf(priv))),
 			"entries", len(st.Entries), "channels", len(channels), "bots", len(conns),
-			"tokens", tokenSrc, "peers", len(peers), "bot_register", *botReg, "channel_url", chURL)
+			"tokens", tokenSrc, "peers", len(peers), "bot_register", *botReg, "register_bot", regBot, "channel_url", chURL)
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		sy.SetupBots()

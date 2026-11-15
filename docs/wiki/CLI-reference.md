@@ -9,7 +9,7 @@ telegraph <command> [flags]
 | `init` | | Create the identity key and local state in `TELEGRAPH_HOME` |
 | `register` | `--handle H --did D` | Claim a free handle for a DID, or change the DID of one you own (refused when another key owns it) |
 | `revoke` | `--handle H` | Revoke a handle you own (it becomes free) |
-| `resolve H` | | Handle → DID, owner and state |
+| `resolve H` | | Handle → DID, owner and state; exits 1 if unregistered or revoked |
 | `verify H` | | `resolve` plus checkpoint attestation |
 | `audit` | | Check signatures, chains and the latest checkpoint |
 | `sync` | `--secs N` (5), `--serve`, `--pin P`, `--genesis`, `--bots`, `--channels`, `--bus`, `--checkpoint-only`, `--bot-register` | Publish pending entries and merge gossip; `--genesis` starts or joins a network with no checkpoint yet; `--bot-register` lets Telegram users `/register` handles signed by this node |
@@ -45,6 +45,7 @@ telegraph <command> [flags]
 | `TELEGRAPH_PIN` | Checkpoint hash to bootstrap from |
 | `TELEGRAPH_BUS` | Local file bus path, used instead of Telegram |
 | `TELEGRAPH_BOT_REGISTER` | `1` turns on the bot's `/register` (same as `--bot-register`) |
+| `TELEGRAPH_REGISTER_BOT` | With registration off, the bot (`@username`) `/register` and `/card` point to (same as `--register-bot`) |
 | `NO_COLOR` | Disable colour |
 | `CLICOLOR_FORCE` | Force colour when stdout is not a terminal |
 
@@ -71,5 +72,6 @@ messages, and in groups when a command is addressed to it
 A handle sent on its own is looked up too. Details:
 [TELEGRAM.md](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md).
 
-Exit status is 0 on success and 1 on any error; errors print as
+Exit status is 0 on success and 1 on any error (`resolve` also exits 1
+for a handle that is unregistered or revoked); errors print as
 `✗ telegraph: …` on stderr.

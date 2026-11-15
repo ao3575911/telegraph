@@ -29,6 +29,8 @@ TELEGRAPH_CHANNEL_URL=https://t.me/tgraph_net
 # Other committee nodes' public keys (telegraph config shows yours), comma-separated
 TELEGRAPH_PEERS=
 TELEGRAPH_BOT_REGISTER=0
+# With registration off: the bot users are sent to for /register and /card
+TELEGRAPH_REGISTER_BOT=@dsmdioefncoedcbot
 TELEGRAPH_LOG_FORMAT=text
 ENV
 	echo "wrote $envfile: add the bot token, then run this script again"

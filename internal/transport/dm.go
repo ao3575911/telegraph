@@ -64,6 +64,67 @@ func MenuCommands(register bool) []BotCommand {
 	return out
 }
 
+// Menu is this responder's command menu. A node that holds handles lists
+// every command. A node that does not, but names a RegisterBot, keeps
+// /register and /card in the menu, described as pointers to that bot.
+func (r *Responder) Menu() []BotCommand {
+	if r.Priv != nil {
+		return MenuCommands(true)
+	}
+	ref := r.referral()
+	if ref == "" {
+		return MenuCommands(false)
+	}
+	var out []BotCommand
+	for _, c := range Commands {
+		switch c.Name {
+		case "register":
+			out = append(out, BotCommand{Command: c.Name, Description: "Claim name@nym on " + ref})
+		case "card":
+			out = append(out, BotCommand{Command: c.Name, Description: "Your bio line, on " + ref})
+		case "revoke":
+		default:
+			out = append(out, BotCommand{Command: c.Name, Description: c.Short})
+		}
+	}
+	return out
+}
+
+// referral is "@RegisterBot", or "" when this node holds handles itself
+// or names no other bot.
+func (r *Responder) referral() string {
+	if r.Priv != nil || r.RegisterBot == "" {
+		return ""
+	}
+	return "@" + r.RegisterBot
+}
+
+// referralButtons links to the RegisterBot, or nil.
+func (r *Responder) referralButtons() [][]Button {
+	if r.referral() == "" {
+		return nil
+	}
+	return [][]Button{{{Text: "Open " + r.referral(), URL: "https://t.me/" + r.RegisterBot}}}
+}
+
+// ValidBotUsername reports whether u (without @) is a Telegram bot
+// username: 5-32 letters, digits or underscores, starting with a letter
+// and ending in "bot".
+func ValidBotUsername(u string) bool {
+	if len(u) < 5 || len(u) > 32 || !strings.HasSuffix(strings.ToLower(u), "bot") {
+		return false
+	}
+	for i, c := range u {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		case i > 0 && (c >= '0' && c <= '9' || c == '_'):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // Descriptions returns the bot's profile texts: the short description
 // (profile page and share preview, at most 120 characters) and the
 // description shown in an empty chat (at most 512).
@@ -75,6 +136,9 @@ func (r *Responder) Descriptions() (short, long string) {
 	if r.Priv != nil {
 		short += " /register to claim yours."
 		b.WriteString("/register name: claim name@nym\n/card: your bio line, tap to copy\n")
+	} else if ref := r.referral(); ref != "" {
+		short += " Claim yours: " + ref + "."
+		fmt.Fprintf(&b, "This node verifies and gossips the registry. To claim name@nym, open %s and send /register name.\n\n", ref)
 	}
 	b.WriteString("/resolve handle: look anyone up\n/help: all commands\n\n")
 	fmt.Fprintf(&b, "Entries are signed, gossiped on @%s and checkpointed by a 2-of-3 node committee. "+
@@ -102,6 +166,10 @@ type Responder struct {
 	Version     string
 	BotUsername string // without @; groups are answered only when addressed to it
 	ChannelURL  string // public channel link for buttons; "" means DefaultChannelURL
+
+	// RegisterBot (username without @) is the bot users are sent to for
+	// /register and /card when this node does not hold handles (Priv nil).
+	RegisterBot string
 
 	// Log receives internal errors (never shown to users); nil means
 	// slog.Default().
@@ -432,6 +500,8 @@ func (r *Responder) start(in Incoming) Reply {
 	b.WriteString("Decentralised handles like <code>alice@nym</code>, signed and gossiped over Telegram.\n\n")
 	if r.Priv != nil {
 		b.WriteString("/register <i>name</i> — claim name@nym\n/card — your bio line, tap to copy\n")
+	} else if ref := r.referral(); ref != "" {
+		b.WriteString("To claim a handle, open " + esc(ref) + " and send /register <i>name</i>.\n")
 	}
 	b.WriteString("/resolve <i>handle</i> — look up a handle\n/stats — network counts\n/help — all commands")
 	return r.reply(in, b.String(), r.linkButtons())
@@ -440,15 +510,14 @@ func (r *Responder) start(in Incoming) Reply {
 func (r *Responder) help(in Incoming) Reply {
 	var b strings.Builder
 	b.WriteString("<b>Commands</b>\n")
-	for _, c := range Commands {
-		if r.Priv == nil && custodialOnly(c.Name) {
-			continue
+	for _, c := range r.Menu() {
+		b.WriteString("/" + c.Command)
+		for _, x := range Commands {
+			if x.Name == c.Command && x.Args != "" && (r.Priv != nil || !custodialOnly(x.Name)) {
+				b.WriteString(" <i>" + esc(x.Args) + "</i>")
+			}
 		}
-		b.WriteString("/" + c.Name)
-		if c.Args != "" {
-			b.WriteString(" <i>" + esc(c.Args) + "</i>")
-		}
-		b.WriteString(" — " + esc(c.Short) + "\n")
+		b.WriteString(" — " + esc(c.Description) + "\n")
 	}
 	b.WriteString("\nOr send a handle on its own, like <code>alice@nym</code>.")
 	return r.reply(in, b.String(), nil)
@@ -482,8 +551,13 @@ func (r *Responder) badInput(in Incoming, why string) Reply {
 
 func (r *Responder) unknownHandle(in Incoming, handle string) Reply {
 	msg := "⚠️ <b>" + esc(handle) + "</b> is not registered."
-	if r.Priv != nil && strings.HasSuffix(handle, "@"+Namespace) {
-		msg += " It is free: /register " + esc(strings.TrimSuffix(handle, "@"+Namespace))
+	if strings.HasSuffix(handle, "@"+Namespace) {
+		name := esc(strings.TrimSuffix(handle, "@"+Namespace))
+		if r.Priv != nil {
+			msg += " It is free: /register " + name
+		} else if ref := r.referral(); ref != "" {
+			msg += " It is free: send /register " + name + " to " + esc(ref) + "."
+		}
 	}
 	return r.reply(in, msg, nil)
 }
@@ -516,8 +590,13 @@ func (r *Responder) resolve(st *store.Store, in Incoming, handle string) Reply {
 	}
 	if e.Payload.Kind == tlog.KindRevoke {
 		msg := "<b>" + esc(handle) + "</b> was revoked by its owner and is free."
-		if r.Priv != nil && strings.HasSuffix(handle, "@"+Namespace) {
-			msg += " /register " + esc(strings.TrimSuffix(handle, "@"+Namespace)) + " to claim it."
+		if strings.HasSuffix(handle, "@"+Namespace) {
+			name := esc(strings.TrimSuffix(handle, "@"+Namespace))
+			if r.Priv != nil {
+				msg += " /register " + name + " to claim it."
+			} else if ref := r.referral(); ref != "" {
+				msg += " Send /register " + name + " to " + esc(ref) + " to claim it."
+			}
 		}
 		return r.reply(in, msg, nil)
 	}

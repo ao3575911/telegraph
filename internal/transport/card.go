@@ -17,6 +17,10 @@ import (
 // so `telegraph scan` reports the line VERIFIED.
 func (r *Responder) card(st *store.Store, in Incoming, arg string) Reply {
 	if r.Priv == nil {
+		if ref := r.referral(); ref != "" {
+			return r.reply(in, "Bio lines come from the node that holds your handle. "+
+				"Open "+esc(ref)+" and send /card.", r.referralButtons())
+		}
 		return r.reply(in, "This node does not hold handles for Telegram users. "+
 			"With the CLI, run <code>telegraph card --handle you@nym</code>.", nil)
 	}

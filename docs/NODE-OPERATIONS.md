@@ -16,6 +16,7 @@ TELEGRAPH_CHANNELS=-1004305320319           # gossip channel (@tgraph_net)
 TELEGRAPH_CHANNEL_URL=https://t.me/tgraph_net
 TELEGRAPH_PEERS=<hex key of node2>,<hex key of node3>
 TELEGRAPH_BOT_REGISTER=1                    # 1 on the node that registers for Telegram users
+# TELEGRAPH_REGISTER_BOT=@dsmdioefncoedcbot # on other nodes: where /register sends users
 TELEGRAPH_LOG_FORMAT=text                   # or json
 ```
 
@@ -29,6 +30,7 @@ TELEGRAPH_LOG_FORMAT=text                   # or json
 | `TELEGRAPH_CHANNEL_URL` | Public link on the bot's Channel button and description. Invite links (`t.me/+…`) are refused. |
 | `TELEGRAPH_PEERS` | The other committee nodes' public keys (`telegraph config key` on each). Used by `telegraph committee` and startup logs; membership itself is decided by the protocol (below). |
 | `TELEGRAPH_BOT_REGISTER` | `1` lets Telegram users `/register` through this node (custodial). |
+| `TELEGRAPH_REGISTER_BOT` | On a node with registration off: the bot (`@username`) that `/register`, `/card`, the command menu and the bot description point users to, e.g. `@dsmdioefncoedcbot` (node 1). Ignored when `TELEGRAPH_BOT_REGISTER=1`. Same as `--register-bot`. |
 | `TELEGRAPH_LOG_FORMAT`, `TELEGRAPH_LOG_LEVEL` | `text`/`json`; `debug`/`info`/`warn`/`error`. Logs go to stderr (the journal under systemd). |
 
 `telegraph config` prints the effective settings without the token.
@@ -118,7 +120,8 @@ for the node's own handle.
    `~/.config/telegraph/node2.env` and stops. Edit it: set `TELEGRAPH_BOTS`
    to the new token, `TELEGRAPH_PEERS` to node 1's key (`telegraph config key`
    on node 1), keep `TELEGRAPH_BOT_REGISTER=0` unless this node should also
-   register for Telegram users.
+   register for Telegram users, and set `TELEGRAPH_REGISTER_BOT` to node 1's
+   bot so `/register` on this bot points users there.
 4. **Join.** Run `sh scripts/node-join.sh node2 <pin> node2 [did]` again. It
    initialises the key, bootstraps the log from node 1 (accepting only
    history that leads to the pin), registers `node2@nym` with the node key

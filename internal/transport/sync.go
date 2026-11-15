@@ -245,7 +245,7 @@ func (s *Syncer) SetupBots() {
 			s.DM.BotUsername = b.Username
 		}
 		if s.DM != nil {
-			if err := b.SetupMenu(MenuCommands(s.DM.Priv != nil)); err != nil {
+			if err := b.SetupMenu(s.DM.Menu()); err != nil {
 				s.logf("command menu: %v", err)
 			}
 			short, long := s.DM.Descriptions()

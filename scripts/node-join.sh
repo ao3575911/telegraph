@@ -44,7 +44,9 @@ if ! grep -q '"entries":\[{' "${TELEGRAPH_HOME:?set TELEGRAPH_HOME in $envfile}/
 	echo "== bootstrapping from peers (pin ${pin%"${pin#????????}"}…)"
 	"$bin" sync --pin "$pin" --secs 60
 fi
-if ! "$bin" resolve "$handle" >/dev/null 2>&1; then
+# resolve exits non-zero for an unregistered handle (after 0.3.0); the grep also
+# covers older binaries, which printed "unregistered" and exited 0.
+if ! "$bin" resolve "$handle" 2>/dev/null | grep -q '→'; then
 	echo "== registering $handle with this node's key"
 	"$bin" register --handle "$handle" --did "$did"
 fi
