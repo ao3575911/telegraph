@@ -14,7 +14,7 @@ that what it sees matches what everyone else sees.
 Install:
 
 ```sh
-go install github.com/ao3575911/telegraph/cmd/telegraph@latest
+curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh
 ```
 
 Status: pre-1.0. The protocol and on-disk format may change between minor

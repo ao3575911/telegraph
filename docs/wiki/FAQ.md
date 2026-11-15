@@ -27,8 +27,15 @@ The second committee member issues after the leader is an hour overdue,
 the third after two hours. The returning leader accepts their checkpoint.
 
 **What can I ask the bot?**
-`/start`, `/help`, `/resolve handle@nym`, `/pin` and `/status` in a direct
-message. Nothing sent to the bot is written to the log.
+Open the command menu, or send `/help`: `/resolve handle@nym`, `/status`,
+`/pin`, `/about`, `/version`, `/help`, `/start`. You can also send a
+handle on its own. Nothing sent to the bot is written to the log.
+
+**How do I install without Go?**
+`curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh`
+downloads the release for your OS, checks its SHA-256 and installs it to
+`~/.local/bin`. With Go, pin the version (`@v0.2.1`): `@latest` can lag
+behind a new tag on the module proxy.
 
 **Can a swap leave one side without a handle?**
 Not if both sides sync before their locks expire. The responder's lock

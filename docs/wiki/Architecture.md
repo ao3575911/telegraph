@@ -68,8 +68,9 @@ The Telegram transport uses only the Bot API (`getUpdates`, `sendMessage`).
 Entries are framed into messages and posted to every configured channel;
 nodes poll, ingest, co-sign pending checkpoints and send heartbeats.
 `sync --serve` also answers `/dump` requests so new nodes can bootstrap,
-and replies to direct messages (`/start`, `/help`, `/resolve`, `/pin`,
-`/status`) from the local store. Private-chat text is never parsed as a
+and replies to people (`/resolve`, `/status`, `/pin`, `/about`,
+`/version`, `/help`, `/start`) from the local store; see
+[TELEGRAM.md](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md). Private-chat text is never parsed as a
 frame, so nothing typed to the bot can enter the log; replies use HTML with
 escaped input and are rate-limited per chat (5 per 30 s).
 The file bus (`TELEGRAPH_BUS`) implements the same interface on a local

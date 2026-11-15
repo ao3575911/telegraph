@@ -26,6 +26,17 @@ Each is fixed in 0.1.0 and covered by a test.
 | checkpoints | No checkpoint was issued while the committee leader was offline ([#3](https://github.com/ao3575911/telegraph/issues/3)). | Committee members 2 and 3 issue in the leader's place once the oldest unchecked entry is `Interval` + 1 h or + 2 h old. |
 | bot | Direct messages to the bot got no answer, and their text was handed to the gossip parser. | Private chats are answered (`/start`, `/help`, `/resolve`, `/pin`, `/status`), rate-limited per chat, and never ingested. |
 
+## Changed in 0.2.1
+
+Found by replaying real Telegram sessions against a fake Bot API and by
+running the live node; details in [TELEGRAM.md](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md).
+
+| Area | Problem | Fix |
+|---|---|---|
+| bot | Direct messages never arrived: Telegram kept an old `allowed_updates` filter. | Every poll sends `allowed_updates`. |
+| bot | Long polls hung behind an egress proxy (HTTP/2), and the token appeared in logged errors. | HTTP/1.1 transport, per-request deadline, backoff with jitter, redacted and rate-limited error logs. |
+| bot | `/help` showed shell commands; the menu lacked commands and listed `/dump`; any group could request a dump. | One command table for `/help` and the menu, Telegram-native replies with buttons, gossip only on configured channels. |
+
 ## Open issues
 
 - After a swap the new owner has no DID until they `register` the handle;
