@@ -20,7 +20,9 @@ To add a committee node: create its own bot, add it to
 `sh scripts/node-join.sh node2 <pin> node2`. It bootstraps from the pin,
 registers `node2@nym` so the node key becomes an issuer (only issuers can
 sit on the checkpoint committee), and installs the service. Add its key
-(`telegraph config key`) to `TELEGRAPH_PEERS` on the other nodes.
+(`telegraph config key`) to `TELEGRAPH_PEERS` on the other nodes and to
+`TELEGRAPH_COMMITTEE` on every node (the committee allowlist, identical
+everywhere), then restart them together.
 
 Settings, failure behaviour, the committee rules and the full runbook:
 [NODE-OPERATIONS.md](https://github.com/ao3575911/telegraph/blob/main/docs/NODE-OPERATIONS.md).

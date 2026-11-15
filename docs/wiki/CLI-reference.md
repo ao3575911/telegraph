@@ -39,6 +39,7 @@ telegraph <command> [flags]
 | `TELEGRAPH_TOKEN_ENV` | Name of the variable holding the token(s), when several nodes share one environment (default `TELEGRAPH_BOTS`) |
 | `TELEGRAPH_CHANNEL_URL` | Public channel link on bot buttons (default `https://t.me/tgraph_net`; invite links are refused) |
 | `TELEGRAPH_PEERS` | Hex public keys of the other committee nodes, for `committee` and logs |
+| `TELEGRAPH_COMMITTEE` | Hex public keys allowed on the checkpoint committee, identical on every node; unset lets any issuer in (unsafe) |
 | `TELEGRAPH_NODE_NAME` | Label added to every log record |
 | `TELEGRAPH_LOG_FORMAT` · `TELEGRAPH_LOG_LEVEL` | `text` (default) or `json` · `debug`, `info`, `warn`, `error` |
 | `TELEGRAPH_CHANNELS` | Comma-separated channels, e.g. `@chan1,@chan2` |

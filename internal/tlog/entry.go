@@ -211,6 +211,16 @@ func verifyCheckpoint(e *Entry, preimage []byte) error {
 	if len(member) > 0 && !member[string(e.PubKey)] {
 		return ErrNotCommittee
 	}
+	if CommitteeSet() {
+		if len(member) == 0 {
+			return ErrOffCommittee
+		}
+		for _, c := range e.Payload.Comm {
+			if !CommitteeAllows(c) {
+				return ErrOffCommittee
+			}
+		}
+	}
 	counted := map[string]bool{string(e.PubKey): true}
 	for _, cs := range e.CoSigs {
 		if len(member) > 0 && !member[string(cs.Pub)] {

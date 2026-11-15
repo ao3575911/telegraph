@@ -3,6 +3,7 @@ package checkpoint
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -29,6 +30,7 @@ type Report struct {
 	Late                                  int // uncovered but stamped before the checkpoint (delivered late)
 	Missing                               int // covered chain links absent locally (sync incomplete)
 	PendingCP                             int // checkpoints still awaiting co-signatures
+	OffCommittee                          int // checkpoints whose committee is outside TELEGRAPH_COMMITTEE (ignored)
 	Diverged                              bool
 }
 
@@ -38,10 +40,14 @@ func Audit(entries []tlog.Entry) Report {
 	for i := range entries {
 		e := entries[i]
 		if err := e.Verify(); err != nil {
-			if tlog.IsPendingQuorum(err) {
-				// well-formed, awaiting co-signatures: part of its issuer's
-				// chain, but attests nothing yet
-				rep.PendingCP++
+			if tlog.Unattested(err) {
+				// well-formed, awaiting co-signatures or off the committee
+				// allowlist: part of its issuer's chain, attests nothing
+				if errors.Is(err, tlog.ErrOffCommittee) {
+					rep.OffCommittee++
+				} else {
+					rep.PendingCP++
+				}
 				valid = append(valid, e)
 				continue
 			}
@@ -55,7 +61,7 @@ func Audit(entries []tlog.Entry) Report {
 			logEntries = append(logEntries, e)
 		}
 	}
-	rep.SigOK = len(valid) - rep.PendingCP
+	rep.SigOK = len(valid) - rep.PendingCP - rep.OffCommittee
 	auditChains(valid, &rep)
 
 	if len(cps) == 0 {
