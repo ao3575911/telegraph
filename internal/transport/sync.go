@@ -167,14 +167,24 @@ func (s *Syncer) isGossipChat(c Chat) bool {
 
 func (s *Syncer) answerUser(b Conn, m *Msg) {
 	rp, ok := b.(Replier)
-	if s.DM == nil || !ok {
+	if s.DM == nil || !ok || s.staging {
 		return
 	}
 	private := m.Chat.Type == "private"
 	if !private && m.Chat.Type != "group" && m.Chat.Type != "supergroup" {
 		return
 	}
-	reply, ok := s.DM.Handle(s.Store, Incoming{Chat: m.Chat.ID, Private: private, Text: m.Text, ID: m.MessageID})
+	in := Incoming{Chat: m.Chat.ID, Private: private, Text: m.Text, ID: m.MessageID}
+	if m.From != nil && !m.From.IsBot {
+		in.User = m.From.ID
+	}
+	reply, ok := s.DM.Handle(s.Store, in)
+	// /register and /revoke append signed entries: gossip them now.
+	if len(s.Store.Pending()) > 0 {
+		if _, err := s.PublishPending(); err != nil {
+			s.logf("publish: %v", err)
+		}
+	}
 	if !ok {
 		return
 	}
