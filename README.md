@@ -44,7 +44,7 @@ telegraph version
 a while on the Go module proxy):
 
 ```sh
-go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.1
+go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.2
 ```
 
 **From source:**
@@ -99,10 +99,19 @@ A new node bootstraps from peers that are serving:
 telegraph init && telegraph sync --pin <checkpoint-hash>
 ```
 
-A serving node also runs its bot for people: `/resolve handle@nym`,
-`/status`, `/pin`, `/about`, `/version`, `/help` and `/start`, listed in
-Telegram's command menu. Replies are read-only and rate-limited, and
-nothing users send ever enters the gossip log. See
+A serving node also runs its bot for people, with every command in
+Telegram's command menu and rate-limited:
+
+| Bot command | |
+|---|---|
+| `/resolve handle@nym` | owner, DID, status and checkpoint attestation |
+| `/register name [did]` | register `name@nym`, signed by this node for you (custodial; DM only; needs `--bot-register`) |
+| `/revoke name` | revoke a handle you registered through the bot |
+| `/status` · `/pin` | node and network status · the trust pin |
+| `/about` · `/version` · `/help` · `/start` | about, version, every command, welcome |
+
+Text people send is never parsed as gossip: the only entries the bot
+writes are `/register` and `/revoke`, signed by the node. See
 [docs/TELEGRAM.md](docs/TELEGRAM.md).
 
 The Telegram transport is the Bot API (`getUpdates`, `sendMessage`). The
@@ -117,7 +126,7 @@ demos use the file bus.
 | `register --handle H --did D` · `revoke --handle H` | claim or revoke a handle |
 | `resolve H` · `verify H` | resolve a handle; `verify` adds checkpoint attestation |
 | `audit` | verify signatures, chains and the latest checkpoint |
-| `sync [--serve] [--secs N] [--pin P \| --genesis]` | publish and merge gossip; `--genesis` starts or joins a network with no checkpoint yet |
+| `sync [--serve] [--secs N] [--pin P \| --genesis] [--bot-register]` | publish and merge gossip; `--genesis` starts or joins a network with no checkpoint yet; `--bot-register` turns on the bot's `/register` |
 | `checkpoint` | issue a checkpoint if this node leads the committee, or as a fallback when the leader is overdue |
 | `pin [--rotate]` · `peers` · `net` | trust root, peers, network health |
 | `card --handle H` · `attest --line L` · `scan L` | bio cards |
@@ -137,7 +146,7 @@ vhs docs/demo/main.tape               # re-record a demo (charmbracelet/vhs)
 
 ## Status
 
-Pre-1.0 (0.2.1). The protocol and on-disk format may change. Known limits
+Pre-1.0 (0.2.2). The protocol and on-disk format may change. Known limits
 are listed in the [usage report](docs/USAGE-REPORT.md#open-issues).
 
 ## Licence

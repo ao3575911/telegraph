@@ -1,11 +1,11 @@
 package transport
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/ao3575911/telegraph/internal/checkpoint"
@@ -31,6 +31,8 @@ type Command struct {
 // node-to-node protocol message on gossip channels and is not listed.
 var Commands = []Command{
 	{"resolve", "handle@nym", "Look up a handle: owner, DID, attestation"},
+	{"register", "name [did]", "Register name@nym, signed by this node for you"},
+	{"revoke", "name", "Revoke a handle you registered here"},
 	{"status", "", "Node and network status"},
 	{"pin", "", "The network's trust pin"},
 	{"about", "", "What Telegraph is and how it works"},
@@ -55,16 +57,20 @@ const (
 	DefaultInviteURL  = "https://t.me/+KEEgOfyWFC1iZGE9"
 	DefaultReleaseURL = "https://github.com/ao3575911/telegraph/releases/latest"
 	DefaultNodeURL    = "https://github.com/ao3575911/telegraph#install"
-	maxHandleLen      = 64
+	maxHandleLen      = tlog.MaxHandleLen
 	pendingFor        = 5 * time.Minute
 )
 
-// Responder answers users with read-only information from the local
-// store. Text users send is never parsed as a frame and never enters the
-// gossip log.
+// Responder answers users from the local store. Text users send is never
+// parsed as a frame. The only entries it writes are /register and /revoke,
+// signed with Priv (the node's own key) when Priv is set; see register.go.
 type Responder struct {
 	Version     string
 	BotUsername string // without @; groups are answered only when addressed to it
+
+	// Priv enables /register and /revoke: the node signs handles for
+	// Telegram users (custodial). nil turns both commands off.
+	Priv ed25519.PrivateKey
 
 	// Limit replies per chat per Window. The first message over the limit
 	// gets a short notice; later ones are dropped until the window clears.
@@ -75,7 +81,13 @@ type Responder struct {
 	mu       sync.Mutex
 	hits     map[int64][]time.Time
 	notified map[int64]bool
-	pending  map[int64]time.Time // chats asked "which handle?"
+	pending  map[int64]ask // chats asked a question, awaiting the answer
+}
+
+// ask is an open question to a chat: which command the answer is for.
+type ask struct {
+	cmd string
+	at  time.Time
 }
 
 func (r *Responder) now() time.Time {
@@ -98,7 +110,7 @@ func (r *Responder) allow(chat int64) (ok bool, notice time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.hits == nil || len(r.hits) > 10000 {
-		r.hits, r.notified, r.pending = map[int64][]time.Time{}, map[int64]bool{}, map[int64]time.Time{}
+		r.hits, r.notified, r.pending = map[int64][]time.Time{}, map[int64]bool{}, map[int64]ask{}
 	}
 	now := r.now()
 	kept := r.hits[chat][:0]
@@ -127,6 +139,7 @@ type Incoming struct {
 	Private bool // false: group or supergroup
 	Text    string
 	ID      int64 // message id, for replies in groups
+	User    int64 // sender's Telegram user id; 0 when unknown
 }
 
 // Handle answers one message. ok is false when the bot should stay
@@ -153,8 +166,13 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 		return Reply{}, false
 	}
 	if !isCmd {
-		if in.Private && r.takePending(in.Chat) {
-			return r.resolve(st, in, text), true
+		if in.Private {
+			switch r.takePending(in.Chat) {
+			case "resolve":
+				return r.resolve(st, in, text), true
+			case "register":
+				return r.register(st, in, text), true
+			}
 		}
 		if in.Private && looksLikeHandle(text) {
 			return r.resolve(st, in, text), true
@@ -171,12 +189,23 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 			if !in.Private {
 				return r.reply(in, "Usage: <code>/resolve handle@nym</code>", nil), true
 			}
-			r.setPending(in.Chat)
+			r.setPending(in.Chat, "resolve")
 			rep := r.reply(in, "Which handle? Send it as a reply, for example <code>alice@nym</code>.", nil)
 			rep.ForceReply = "alice@nym"
 			return rep, true
 		}
 		return r.resolve(st, in, arg), true
+	case "register":
+		if in.Private && arg == "" && r.Priv != nil {
+			r.setPending(in.Chat, "register")
+			rep := r.reply(in, "Which name? Send it as a reply, for example <code>adz</code> "+
+				"(or <code>adz did:key:…</code> to set your own DID).", nil)
+			rep.ForceReply = "adz"
+			return rep, true
+		}
+		return r.register(st, in, arg), true
+	case "revoke":
+		return r.revoke(st, in, arg), true
 	case "pin":
 		return r.pin(st, in), true
 	case "status":
@@ -223,29 +252,28 @@ func addressedOK(text, bot string) bool {
 	return s == "" || bot == "" || strings.EqualFold(s, bot)
 }
 
-func looksLikeHandle(s string) bool {
-	if utf8.RuneCountInString(s) > maxHandleLen || strings.Count(s, "@") != 1 {
-		return false
-	}
-	at := strings.IndexByte(s, '@')
-	return at > 0 && at < len(s)-1 && !strings.ContainsFunc(s, unicode.IsSpace)
-}
+func looksLikeHandle(s string) bool { return tlog.ValidHandle(s) == nil }
 
-func (r *Responder) setPending(chat int64) {
+func (r *Responder) setPending(chat int64, cmd string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.pending == nil {
-		r.pending = map[int64]time.Time{}
+		r.pending = map[int64]ask{}
 	}
-	r.pending[chat] = r.now()
+	r.pending[chat] = ask{cmd, r.now()}
 }
 
-func (r *Responder) takePending(chat int64) bool {
+// takePending returns the command an open question in chat is for, or ""
+// when there is none (or it expired).
+func (r *Responder) takePending(chat int64) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	t, ok := r.pending[chat]
+	a, ok := r.pending[chat]
 	delete(r.pending, chat)
-	return ok && r.now().Sub(t) < pendingFor
+	if !ok || r.now().Sub(a.at) >= pendingFor {
+		return ""
+	}
+	return a.cmd
 }
 
 // esc escapes text for Telegram's HTML parse mode, which needs only
@@ -288,6 +316,7 @@ func (r *Responder) start(in Incoming) Reply {
 		"A decentralised handle registry. Handles like <code>alice@nym</code> live in signed logs "+
 		"that nodes gossip over Telegram and checkpoint together.\n\n"+
 		"/resolve — look up a handle\n"+
+		"/register — claim a handle like <code>adz@nym</code>\n"+
 		"/status — this node and the network\n"+
 		"/help — every command\n\n"+
 		"Run your own node: <a href=\""+DefaultNodeURL+"\">README</a>", linkButtons())

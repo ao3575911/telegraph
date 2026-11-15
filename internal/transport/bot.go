@@ -126,9 +126,16 @@ type Chat struct {
 	Username string `json:"username,omitempty"`
 }
 
+// User is the subset of a Telegram user the node uses.
+type User struct {
+	ID    int64 `json:"id"`
+	IsBot bool  `json:"is_bot"`
+}
+
 type Msg struct {
 	MessageID int64  `json:"message_id"`
 	Chat      Chat   `json:"chat"`
+	From      *User  `json:"from,omitempty"`
 	Text      string `json:"text"`
 }
 

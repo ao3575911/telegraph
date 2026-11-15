@@ -44,6 +44,7 @@ func doRegister(dir string, args []string) {
 	if *handle == "" || *did == "" {
 		die(errors.New("both --handle and --did are required"))
 	}
+	dieOn(tlog.ValidHandle(*handle))
 	priv := mustKey(dir)
 	st := mustStore(dir)
 	nonce := make([]byte, 16)
@@ -210,6 +211,8 @@ func doSync(dir string, args []string) {
 	pinStr := fs.String("pin", envOr("TELEGRAPH_PIN", ""), "genesis checkpoint pin (first sync)")
 	cpOnly := fs.Bool("checkpoint-only", false, "attempt one checkpoint then exit")
 	genesis := fs.Bool("genesis", false, "start or join a network that has no checkpoint yet (no pin)")
+	botReg := fs.Bool("bot-register", envOr("TELEGRAPH_BOT_REGISTER", "") == "1",
+		"let Telegram users /register handles, signed by this node's key (custodial)")
 	_ = fs.Parse(args)
 
 	var conns []transport.Conn
@@ -243,9 +246,13 @@ func doSync(dir string, args []string) {
 	} else if *pinStr != "" && st.Pin != "" && st.Pin != *pinStr {
 		die(fmt.Errorf("--pin %s conflicts with local pin %s", short(*pinStr), short(st.Pin)))
 	}
-	sy := transport.NewSyncer(conns, channels, st, mustKey(dir))
+	priv := mustKey(dir)
+	sy := transport.NewSyncer(conns, channels, st, priv)
 	if *bus == "" {
 		sy.DM = &transport.Responder{Version: "v" + Version}
+		if *botReg {
+			sy.DM.Priv = priv
+		}
 	}
 
 	if *cpOnly {

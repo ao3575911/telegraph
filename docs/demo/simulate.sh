@@ -141,4 +141,4 @@ HDR
 } >"$REPORT"
 rm -f "$STEPS"
 echo "wrote $REPORT: $pass ok, $fail unexpected, ${total_ms} ms"
-[ "$fail" -eq 0 ]
+[ "$fail" -eq 0 ] || { grep -A12 '^### ✗' "$REPORT" | grep -v '^--$' >&2; exit 1; }

@@ -28,6 +28,11 @@ type Store struct {
 	PinSetAt int64            `json:"pinAt"`
 	Peers    map[string]*Peer `json:"peers"`
 
+	// Custody maps handles this node signed for Telegram users (bot
+	// /register) to the user id allowed to change or revoke them. It is
+	// node-local and never gossiped.
+	Custody map[string]int64 `json:"custody,omitempty"`
+
 	staged []tlog.Entry
 }
 
