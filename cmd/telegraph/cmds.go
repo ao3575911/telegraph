@@ -566,3 +566,32 @@ func trustGate(st *store.Store, priv ed25519.PrivateKey, pinFlag string, genesis
 	}
 	return t
 }
+
+// doRedactDIDs lists, and with --apply re-registers, the handles this node
+// holds for Telegram users whose DID is the pre-v0.3.1 did:tg:<user id>.
+func doRedactDIDs(dir string, args []string) {
+	fs := flag.NewFlagSet("redact-dids", flag.ExitOnError)
+	apply := fs.Bool("apply", false, "sign the owner updates (published by the next sync)")
+	_ = fs.Parse(args)
+	priv := mustKey(dir)
+	st := mustStore(dir)
+	hs, err := transport.RedactRawDIDs(st, priv, time.Now(), *apply)
+	if *apply {
+		if serr := st.Save(); err == nil {
+			err = serr
+		}
+	}
+	dieOn(err)
+	if len(hs) == 0 {
+		out.OK("no handle held here has a raw Telegram id DID")
+		return
+	}
+	for _, h := range hs {
+		out.Printf("  %s\n", h)
+	}
+	if *apply {
+		out.OK("%d handles updated to tag DIDs: run sync to publish", len(hs))
+	} else {
+		out.Info("%d handles have a did:tg:<user id> DID: rerun with --apply (stop the serving node first)", len(hs))
+	}
+}

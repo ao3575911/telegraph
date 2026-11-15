@@ -93,7 +93,7 @@ From Telegram, in a private chat with a node's bot that runs with
 `--bot-register` (or `TELEGRAPH_BOT_REGISTER=1`):
 
 ```text
-/register adz                  # adz@nym, DID did:tg:<your Telegram user id>
+/register adz                  # adz@nym, DID did:tg:<private tag of your account>
 /register adz did:key:z6Mk…    # adz@nym with your own DID
 /card                          # ⟁ adz@nym · 1a2b3c4d, tap to copy into your bio
 /revoke adz
