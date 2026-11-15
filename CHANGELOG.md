@@ -47,6 +47,16 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `/stats` active and revoked counts use the ownership fold, the same
+  winner logic as `/resolve` (first-come, swaps, finality). They took the
+  newest register or revoke from any key, so a void register or a
+  stranger's revoke skewed them.
+- The usage report (`docs/demo/simulate.sh`, and `sync-all` in the demo
+  environment) always showed 1 entry per node: `grep -c` counts lines and
+  `data.json` is one line. It now counts entries.
+- Install docs pointed at `@v0.2.3`, which cannot join a 0.3.x network:
+  `go install …@latest` everywhere (README, quickstart, site, FAQ), with a
+  note on pinning a version.
 - **No raw Telegram user ids are stored or published** (Telegram bot
   developer terms). The bot's default DID was `did:tg:<user id>`, signed
   into the gossiped log, and custody in `data.json` kept raw ids. A node

@@ -32,7 +32,7 @@ step() {
 	} >>"$STEPS"
 }
 
-entries() { grep -c '"ha"' "$TG_DEMO/$1/data.json"; }
+entries() { grep -o '"ha"' "$TG_DEMO/$1/data.json" | wc -l | tr -d ' '; }
 
 step ok alice version
 step ok alice register --handle alice@nym --did did:key:alice

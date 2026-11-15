@@ -20,7 +20,7 @@ sync-all() {
 	for n in alice bob carol alice bob carol; do $n sync --secs 0 --genesis >/dev/null || return 1; done
 	printf '↻ synced  '
 	for n in alice bob carol; do
-		printf '%s %s  ' "$n" "$(grep -c '"ha"' "$TG_DEMO/$n/data.json")"
+		printf '%s %s  ' "$n" "$(grep -o '"ha"' "$TG_DEMO/$n/data.json" | wc -l | tr -d ' ')"
 	done
 	printf 'entries\n'
 }

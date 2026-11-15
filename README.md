@@ -42,11 +42,11 @@ curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/in
 telegraph version
 ```
 
-**Go 1.22+**, pinned to a release (`@latest` can lag behind a new tag for
-a while on the Go module proxy):
+**Go 1.22+** (the newest tag; for a reproducible install pin one, e.g.
+`@v0.3.0`, and run the same version on every node of a network):
 
 ```sh
-go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.3
+go install github.com/ao3575911/telegraph/cmd/telegraph@latest
 ```
 
 **From source:**
