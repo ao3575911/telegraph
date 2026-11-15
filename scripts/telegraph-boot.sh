@@ -28,7 +28,9 @@ say() { [ -n "$quiet" ] || echo "telegraph-boot: $*"; }
 if [ -d /proc/$$/fd ]; then
 	for fd in "/proc/$$/fd"/*; do
 		fd=${fd##*/}
-		case $fd in [0-2] | *[!0-9]*) ;; *) [ "$fd" -lt 10 ] && eval "exec $fd>&-" 2>/dev/null || true ;; esac
+		case $fd in
+		[3-9]) eval "exec $fd>&-" 2>/dev/null || : ;;
+		esac
 	done
 fi
 
