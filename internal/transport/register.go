@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ao3575911/telegraph/internal/handshake"
 	"github.com/ao3575911/telegraph/internal/store"
@@ -19,7 +19,9 @@ import (
 
 // Bot registration is custodial. The node signs the register entry with
 // its own key, so on the network the node's key owns the handle. The node
-// records the Telegram user id in store.Custody and only that user can
+// records the Telegram user's tag (store.TelegramTag, an HMAC of the user
+// id under a node-local secret; the raw id is never stored or gossiped)
+// in store.Custody and only that user can
 // change the DID or revoke the handle through the bot. The bot follows
 // the network's first-come rule: it never signs for a handle another key
 // owns, a handle the operator holds without custody, or one locked in a
@@ -67,13 +69,21 @@ func ValidDID(d string) error {
 	return nil
 }
 
-// TelegramDID is the default DID for a user who does not supply one. It
-// is a plain label binding the handle to a Telegram account, not a
-// resolvable DID method, and it makes the user id public.
-func TelegramDID(user int64) string { return "did:tg:" + strconv.FormatInt(user, 10) }
+// TelegramDID is the default DID for a user who does not supply one: a
+// plain label, not a resolvable DID method, built from the user's tag on
+// this node. It does not reveal the Telegram user id (before v0.3.1 it
+// was did:tg:<user id>).
+func TelegramDID(tag string) string { return "did:tg:" + tag }
 
-// parseRegister splits "/register" arguments into a handle and DID.
-func parseRegister(arg string, user int64) (handle, did string, defaulted bool, err error) {
+// rawTelegramDID matches the pre-v0.3.1 default DID, did:tg:<user id>.
+var rawTelegramDID = regexp.MustCompile(`^did:tg:[0-9]+$`)
+
+// IsRawTelegramDID reports whether did embeds a raw Telegram user id.
+func IsRawTelegramDID(did string) bool { return rawTelegramDID.MatchString(did) }
+
+// parseRegister splits "/register" arguments into a handle and DID; tag
+// is the sender's TelegramTag.
+func parseRegister(arg string, tag string) (handle, did string, defaulted bool, err error) {
 	f := strings.Fields(arg)
 	if len(f) == 0 || len(f) > 2 {
 		return "", "", false, errors.New("usage")
@@ -84,7 +94,7 @@ func parseRegister(arg string, user int64) (handle, did string, defaulted bool, 
 	if len(f) == 2 {
 		return handle, f[1], false, ValidDID(f[1])
 	}
-	return handle, TelegramDID(user), true, nil
+	return handle, TelegramDID(tag), true, nil
 }
 
 // sender is the Telegram user behind a private message. In a private
@@ -95,6 +105,10 @@ func sender(in Incoming) int64 {
 	}
 	return in.Chat
 }
+
+// senderTag is sender's tag on st: the only form of the user id the node
+// keeps.
+func senderTag(st *store.Store, in Incoming) string { return st.TelegramTag(sender(in)) }
 
 func (r *Responder) pub() []byte { return []byte(r.Priv.Public().(ed25519.PublicKey)) }
 
@@ -126,7 +140,7 @@ func (r *Responder) register(st *store.Store, in Incoming, arg string) Reply {
 	case !in.Private:
 		return r.dmOnly(in, "register")
 	}
-	user := sender(in)
+	user := senderTag(st, in)
 	handle, did, defaulted, err := parseRegister(arg, user)
 	if err != nil {
 		if err.Error() == "usage" {
@@ -148,7 +162,7 @@ func (r *Responder) register(st *store.Store, in Incoming, arg string) Reply {
 	// Bind custody before the entry exists, so a crash between the two
 	// can never leave a node-signed handle without its Telegram owner.
 	if st.Custody == nil {
-		st.Custody = map[string]int64{}
+		st.Custody = map[string]string{}
 	}
 	hadCustody, had := st.Custody[handle]
 	st.Custody[handle] = user
@@ -173,7 +187,7 @@ func (r *Responder) register(st *store.Store, in Incoming, arg string) Reply {
 	fmt.Fprintf(&b, "Held for you by this node (key <code>%s</code>). Only your Telegram account can change or /revoke it.\n",
 		short8(e.KeyHex()))
 	if defaulted {
-		b.WriteString("\nThe default DID shows your Telegram user id publicly. To use your own: <code>/register " +
+		b.WriteString("\nThe default DID is a private alias of your Telegram account on this node, not your user id. To use your own: <code>/register " +
 			strings.TrimSuffix(handle, "@"+Namespace) + " did:method:id</code>\n")
 	}
 	if prev == nil {
@@ -204,7 +218,7 @@ func (r *Responder) revoke(st *store.Store, in Incoming, arg string) Reply {
 	if err != nil {
 		return r.badInput(in, sentence(err.Error()))
 	}
-	user := sender(in)
+	user := senderTag(st, in)
 	prev, refusal := r.checkOwner(st, handle, user)
 	switch {
 	case refusal != "":
@@ -248,7 +262,7 @@ func sentence(s string) string {
 // the handle's current entry when this node holds it for user (nil when
 // the handle is free) or a refusal to send instead. Custody records that
 // no longer match the network (revoked, or swapped away) are dropped.
-func (r *Responder) checkOwner(st *store.Store, handle string, user int64) (*tlog.Entry, string) {
+func (r *Responder) checkOwner(st *store.Store, handle string, user string) (*tlog.Entry, string) {
 	o := st.Ownership(handle)
 	cust, custodial := st.Custody[handle]
 	switch {
@@ -278,7 +292,7 @@ func (r *Responder) checkOwner(st *store.Store, handle string, user int64) (*tlo
 
 // held counts the handles user holds through this node, other than
 // handle: custody records whose handle this node's key still owns.
-func held(st *store.Store, node []byte, user int64, handle string) int {
+func held(st *store.Store, node []byte, user string, handle string) int {
 	n := 0
 	for h, u := range st.Custody {
 		if u != user || h == handle {
@@ -292,7 +306,7 @@ func held(st *store.Store, node []byte, user int64, handle string) int {
 }
 
 // heldHandles lists, sorted, the handles user holds through this node.
-func heldHandles(st *store.Store, node []byte, user int64) []string {
+func heldHandles(st *store.Store, node []byte, user string) []string {
 	var out []string
 	for h, u := range st.Custody {
 		if u != user {
@@ -329,3 +343,37 @@ func (r *Responder) sign(st *store.Store, kind tlog.Kind, handle, did string, pr
 }
 
 var errRejected = errors.New("entry rejected by local store")
+
+// RedactRawDIDs finds handles this node holds for Telegram users whose
+// current DID is the pre-v0.3.1 default, did:tg:<user id>, which put the
+// raw id in the gossiped log. With apply it signs an owner update to the
+// user's tag DID (TelegramDID) for each; the entries are published by
+// the next sync. Old entries stay in the append-only log and the channel
+// history: this stops the id being the current, resolved DID.
+func RedactRawDIDs(st *store.Store, priv ed25519.PrivateKey, now time.Time, apply bool) ([]string, error) {
+	r := &Responder{Priv: priv, Now: func() time.Time { return now }}
+	var hs []string
+	for h := range st.Custody {
+		hs = append(hs, h)
+	}
+	sort.Strings(hs)
+	var out []string
+	for _, h := range hs {
+		o := st.Ownership(h)
+		if o.Free || o.Status == handshake.StateLocked || !bytes.Equal(o.Owner, r.pub()) {
+			continue
+		}
+		e, _, ok := lookupHandle(st, h)
+		if !ok || e.Payload.Kind != tlog.KindRegister || !IsRawTelegramDID(e.Payload.DID) {
+			continue
+		}
+		out = append(out, h)
+		if !apply {
+			continue
+		}
+		if _, err := r.sign(st, tlog.KindRegister, h, TelegramDID(st.Custody[h]), &e); err != nil {
+			return out, fmt.Errorf("%s: %w", h, err)
+		}
+	}
+	return out, nil
+}

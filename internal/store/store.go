@@ -31,9 +31,15 @@ type Store struct {
 	Peers    map[string]*Peer `json:"peers"`
 
 	// Custody maps handles this node signed for Telegram users (bot
-	// /register) to the user id allowed to change or revoke them. It is
-	// node-local and never gossiped.
-	Custody map[string]int64 `json:"custody,omitempty"`
+	// /register) to the tag (TelegramTag) of the user allowed to change or
+	// revoke them. It is node-local and never gossiped, and holds no raw
+	// Telegram user ids.
+	Custody map[string]string `json:"custodyTags,omitempty"`
+	// LegacyCustody is the pre-v0.3.1 custody map keyed by raw user id;
+	// Open converts it to tags and Save drops it.
+	LegacyCustody map[string]int64 `json:"custody,omitempty"`
+
+	tgSecret []byte
 
 	staged    []tlog.Entry
 	stagedSet map[string]bool
@@ -109,6 +115,9 @@ func Open(path string) (*Store, error) {
 	}
 	if s.Peers == nil {
 		s.Peers = map[string]*Peer{}
+	}
+	if err := s.migrateCustody(); err != nil {
+		return nil, err
 	}
 	return s, nil
 }

@@ -89,8 +89,8 @@ func TestBotRefusesTakeover(t *testing.T) {
 		t.Fatal("the bot signed an entry for a handle another key owns")
 	}
 	// A stale custody record (handle swapped away) neither blocks nor counts.
-	st.Custody = map[string]int64{"bob@nym": 42}
-	if held(st, r.pub(), 42, "") != 0 || len(heldHandles(st, r.pub(), 42)) != 0 {
+	st.Custody = map[string]string{"bob@nym": st.TelegramTag(42)}
+	if held(st, r.pub(), st.TelegramTag(42), "") != 0 || len(heldHandles(st, r.pub(), st.TelegramTag(42))) != 0 {
 		t.Fatal("custody of a foreign-owned handle counted as held")
 	}
 	send(t, r, st, 42, "/register bob")

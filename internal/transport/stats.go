@@ -98,7 +98,7 @@ func (r *Responder) stats(st *store.Store, in Incoming) Reply {
 	if r.Priv != nil {
 		fmt.Fprintf(&b, "Held by this bot for Telegram users %d", s.Custodial)
 		if in.Private {
-			if n := held(st, r.pub(), sender(in), ""); n > 0 {
+			if n := held(st, r.pub(), senderTag(st, in), ""); n > 0 {
 				fmt.Fprintf(&b, " (yours %d of %d)", n, MaxHandlesPerUser)
 			}
 		}

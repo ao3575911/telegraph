@@ -109,7 +109,11 @@ run different builds.
   error; the node keeps serving.
 - `data.json` is written atomically (temp file, fsync, rename).
 
-Back up `TELEGRAPH_HOME` (`identity.key` and `data.json`) before upgrades.
+Back up `TELEGRAPH_HOME` (`identity.key`, `data.json` and, on a node
+that registers for Telegram users, `telegram.secret`) before upgrades.
+`telegram.secret` keys the tags that stand in for Telegram user ids:
+lose it and users can no longer manage the handles the node holds for
+them.
 
 ## The checkpoint committee
 
