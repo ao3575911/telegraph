@@ -93,7 +93,10 @@ From Telegram, in a private chat with a node's bot that runs with
 The node signs the entry with its own key and gossips it, so `adz@nym`
 resolves on every node. That is custodial: the node's key owns the handle,
 and the node lets only your Telegram account change or revoke it. Names are
-1–32 characters of `a-z 0-9 _ . -`.
+1–32 characters of `a-z 0-9 _ . -`. A first registration also tells you
+your handle's number on the network, with a Founding 100 badge for the
+first 100 and Early adopter for 101–1000. `/stats` shows how many spots
+are left.
 
 From the CLI, the handle is owned by your own key:
 
