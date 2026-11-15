@@ -37,7 +37,9 @@ otherwise `/register` says the node does not register handles.
   node's key as owner. The node stores the Telegram user id for each
   handle in `custody` in its `data.json` (local, never gossiped) and lets
   only that user change the DID or `/revoke`. Another node, or the
-  operator's CLI, is not bound by that record. To hold the key yourself,
+  operator's CLI, is not bound by that record, and until
+  [#15](https://github.com/ao3575911/telegraph/issues/15) any key can
+  overwrite a handle with a later register. To hold the key yourself,
   run a node and use `telegraph register`.
 - **Names.** `adz`, `Adz` and `adz@nym` all mean `adz@nym`. Names are 1–32
   characters of `a-z 0-9 _ . -`, not starting with `_ . -`; only `@nym`.

@@ -23,6 +23,7 @@ standard library only.
 | Pinned bootstrap | A new node trusts only a checkpoint hash shared out of band; a dump without it is rejected as a whole. |
 | Atomic swaps | Two owners exchange handles with an HTLC-style hashlock and staggered expiries; either both move or neither does. [Demo](docs/demo/swap.gif) |
 | Bio cards | `⟁ alice@nym · 1a2b3c4d` in a profile, verifiable against the owner's signed attestation. [Demo](docs/demo/card.gif) |
+| Telegram bot | A serving node answers `/resolve`, `/status` and `/pin`, and can register handles for people (`/register`, custodial and opt-in). [Bot docs](docs/TELEGRAM.md) |
 
 Docs: [quickstart](docs/QUICKSTART.md) · [wiki](https://github.com/ao3575911/telegraph/wiki) ·
 [site](https://ao3575911.github.io/telegraph/). More recordings: [help](docs/demo/help.gif) · [sync and merge](docs/demo/sync.gif) ·

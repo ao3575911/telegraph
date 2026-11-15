@@ -10,6 +10,11 @@ that what it sees matches what everyone else sees.
 - [[Architecture]]: logs, merge, checkpoints, swaps, transport
 - [[CLI reference|CLI-reference]]: every command and flag
 - [[FAQ]]
+- [Telegram bot](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md): commands, `/register` and custody
+
+Register a handle: DM a node's bot `/register adz` (custodial, the node's
+key owns it), or with your own key run `telegraph init`, then
+`telegraph register --handle adz@nym --did did:key:adz` and `telegraph sync`.
 
 Install:
 
@@ -17,6 +22,6 @@ Install:
 curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh
 ```
 
-Status: pre-1.0. The protocol and on-disk format may change between minor
+Status: pre-1.0 (0.2.2). The protocol and on-disk format may change between minor
 versions. Known limits are tracked as
 [issues](https://github.com/ao3575911/telegraph/issues).
