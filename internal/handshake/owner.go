@@ -2,7 +2,6 @@ package handshake
 
 import (
 	"bytes"
-	"sort"
 
 	"github.com/ao3575911/telegraph/internal/tlog"
 )
@@ -45,7 +44,7 @@ func Owner(handle string, entries []tlog.Entry) (pub []byte, st Status, since in
 			rel = append(rel, e)
 		}
 	}
-	sort.Slice(rel, func(i, j int) bool { return before(rel[i], rel[j]) })
+	tlog.SortCausal(rel, entries)
 	return (&folder{rel: rel, memo: map[int]result{}}).fold(len(rel))
 }
 
@@ -71,15 +70,7 @@ func (f *folder) fold(n int) ([]byte, Status, int64) {
 	return p, st, since
 }
 
-// before orders entries by (TS, hash): a total, input-order-free order.
-func before(a, b *tlog.Entry) bool {
-	if a.Payload.TS != b.Payload.TS {
-		return a.Payload.TS < b.Payload.TS
-	}
-	return bytes.Compare(a.Hash, b.Hash) < 0
-}
-
-// compute resolves ownership over rel[:n]; rel is sorted by before().
+// compute resolves ownership over rel[:n]; rel is in tlog.SortCausal order.
 func (f *folder) compute(n int) ([]byte, Status, int64) {
 	rel := f.rel[:n]
 	// newest lock whose signer owned the handle just before it

@@ -105,3 +105,30 @@ func TestStoreIndexAndAtomicSave(t *testing.T) {
 		t.Fatal("reloaded store re-admitted a known entry")
 	}
 }
+
+// TestNextTSStrictlyIncreases: a signer's entries never share a second,
+// even when the clock stands still or runs backwards (#17).
+func TestNextTSStrictlyIncreases(t *testing.T) {
+	pub, priv := key(t)
+	st := mem()
+	if got := st.NextTS(pub, 100); got != 100 {
+		t.Fatalf("empty chain: got %d, want 100", got)
+	}
+	last := int64(0)
+	for i, now := range []int64{100, 100, 100, 99, 500, 500} {
+		ts := st.NextTS(pub, now)
+		if ts <= last || ts < now {
+			t.Fatalf("step %d: ts %d after %d (now %d)", i, ts, last, now)
+		}
+		e, _ := tlog.New(tlog.Payload{Kind: tlog.KindRegister, Handle: "a@nym", DID: "d",
+			TS: ts, Nonce: []byte{byte(i)}}, priv, st.Tip(pub))
+		if !st.AppendEntry(e) {
+			t.Fatal("append failed")
+		}
+		last = ts
+	}
+	other, _ := key(t)
+	if got := st.NextTS(other, 100); got != 100 {
+		t.Fatalf("other signer: got %d, want 100", got)
+	}
+}

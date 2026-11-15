@@ -388,7 +388,7 @@ func (s *Syncer) IssueHeartbeat() error {
 	}
 	e, err := tlog.New(tlog.Payload{
 		Kind: tlog.KindHeartbeat, Handle: "hb", DID: "alive",
-		TS: nowSec(), Nonce: nonce, Pin: s.Store.Pin,
+		TS: s.Store.NextTS(s.pub(), nowSec()), Nonce: nonce, Pin: s.Store.Pin,
 	}, s.Priv, s.Store.Tip(s.pub()))
 	if err != nil {
 		return err

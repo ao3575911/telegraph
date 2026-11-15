@@ -96,13 +96,13 @@ func swapOffer(dir string, st *store.Store, priv []byte, pub []byte, gives, want
 	_, _ = rand.Read(nonce)
 	offer, err := tlog.New(tlog.Payload{
 		Kind: tlog.KindOffer, Handle: gives, DID: wants,
-		SwapID: id, Hash: hash, Expiry: terms.Expiry, TS: now, Nonce: nonce,
+		SwapID: id, Hash: hash, Expiry: terms.Expiry, TS: st.NextTS(pub, now), Nonce: nonce,
 	}, priv, st.Tip(pub))
 	dieOn(err)
 	appendOwn(st, offer)
 	// The give-lock outlives the responder's lock by a full claim window.
 	lock, err := handshake.BuildLock(gives, terms, hash, terms.Expiry+handshake.ClaimWindow,
-		now, priv, st.Tip(pub))
+		st.NextTS(pub, now), priv, st.Tip(pub))
 	dieOn(err)
 	appendOwn(st, lock)
 	dieOn(os.MkdirAll(filepath.Join(dir, "preimages"), 0o700))
@@ -164,7 +164,7 @@ func swapAccept(st *store.Store, priv, pub []byte, id string) {
 		die(fmt.Errorf("initiator's lock on %s is not in force (%s)", terms.InitGive, s))
 	}
 	lock, err := handshake.BuildLock(terms.InitWant, terms, offer.Payload.Hash, terms.Expiry,
-		time.Now().Unix(), priv, st.Tip(pub))
+		st.NextTS(pub, time.Now().Unix()), priv, st.Tip(pub))
 	dieOn(err)
 	if err := handshake.ValidateStagger(give, lock); err != nil {
 		die(err)
@@ -210,7 +210,7 @@ func swapClaim(dir string, st *store.Store, priv, pub []byte, id string) {
 	}
 	pre, err := preimage(dir, st, id, lock.Payload.Hash)
 	dieOn(err)
-	e, err := handshake.BuildClaim(lock.Payload.Handle, id, pre, time.Now().Unix(), priv, st.Tip(pub))
+	e, err := handshake.BuildClaim(lock.Payload.Handle, id, pre, st.NextTS(pub, time.Now().Unix()), priv, st.Tip(pub))
 	dieOn(err)
 	if err := handshake.ValidClaim(lock, e); err != nil {
 		die(fmt.Errorf("claim invalid: %v", err))
@@ -229,7 +229,7 @@ func swapReclaim(st *store.Store, priv, pub []byte, id string) {
 		die(fmt.Errorf("too early: reclaim after %s",
 			time.Unix(lock.Payload.Expiry, 0).UTC().Format(time.RFC3339)))
 	}
-	e, err := handshake.BuildReclaim(lock.Payload.Handle, id, time.Now().Unix(), priv, st.Tip(pub))
+	e, err := handshake.BuildReclaim(lock.Payload.Handle, id, st.NextTS(pub, time.Now().Unix()), priv, st.Tip(pub))
 	dieOn(err)
 	appendOwn(st, e)
 	out.OK("reclaimed %s  %s", out.Bold(lock.Payload.Handle), out.Cyan("[REVERTED]"))

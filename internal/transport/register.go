@@ -241,7 +241,7 @@ func (r *Responder) sign(st *store.Store, kind tlog.Kind, handle, did string, pr
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	ts := r.now().Unix()
+	ts := st.NextTS(r.pub(), r.now().Unix())
 	if prev != nil && ts <= prev.Payload.TS {
 		ts = prev.Payload.TS + 1
 	}

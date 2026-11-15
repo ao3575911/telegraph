@@ -181,6 +181,17 @@ func (s *Store) Tip(pub []byte) []byte {
 	return b
 }
 
+// NextTS returns the timestamp for pub's next entry: now, or one second
+// past pub's chain tip when the tip is not older. A signer's own entries
+// then never share a second, so even nodes that order same-second entries
+// by hash alone (v0.2.2 and earlier) fold them in chain order.
+func (s *Store) NextTS(pub []byte, now int64) int64 {
+	if i := s.find(s.Tip(pub)); i >= 0 && now <= s.Entries[i].Payload.TS {
+		return s.Entries[i].Payload.TS + 1
+	}
+	return now
+}
+
 func (s *Store) MarkSeen(hashHex string) {
 	if hashHex != "" {
 		s.Seen[hashHex] = true

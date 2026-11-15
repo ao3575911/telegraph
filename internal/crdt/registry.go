@@ -72,32 +72,29 @@ func (r *Registry) Resolve(handle string) (tlog.Entry, handshake.Status, bool) {
 	if pub == nil {
 		return tlog.Entry{}, st, false
 	}
-	// newest register/revoke by the current owner, for display
-	var best tlog.Entry
-	found := false
+	// newest register/revoke by the current owner, for display; failing
+	// that (owner via claim, no register yet) the newest entry the owner
+	// signed for this handle, i.e. the claim itself
+	var plain, owned []*tlog.Entry
 	for i := range r.All {
-		e := r.All[i]
+		e := &r.All[i]
 		if e.Payload.Handle != handle || !bytes.Equal(e.PubKey, pub) {
 			continue
 		}
+		owned = append(owned, e)
 		if e.Payload.Kind == tlog.KindRegister || e.Payload.Kind == tlog.KindRevoke {
-			if !found || wins(e, best) {
-				best, found = e, true
-			}
+			plain = append(plain, e)
 		}
 	}
-	if !found {
-		// owner via claim: no register entry yet, so report the newest
-		// entry the owner signed for this handle (the claim itself)
-		for i := range r.All {
-			e := r.All[i]
-			if e.Payload.Handle == handle && bytes.Equal(e.PubKey, pub) &&
-				(!found || wins(e, best)) {
-				best, found = e, true
-			}
-		}
+	pick := plain
+	if len(pick) == 0 {
+		pick = owned
 	}
-	return best, st, true
+	if len(pick) == 0 {
+		return tlog.Entry{}, st, false
+	}
+	tlog.SortCausal(pick, r.All)
+	return *pick[len(pick)-1], st, true
 }
 
 func wins(a, b tlog.Entry) bool {
