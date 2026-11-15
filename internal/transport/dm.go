@@ -2,10 +2,10 @@ package transport
 
 import (
 	"fmt"
-	"html"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/ao3575911/telegraph/internal/checkpoint"
@@ -13,38 +13,70 @@ import (
 	"github.com/ao3575911/telegraph/internal/tlog"
 )
 
-// HTMLSender is implemented by connections that can send formatted
-// replies (the Telegram Bot). The file bus does not answer DMs.
-type HTMLSender interface {
-	SendHTML(chat, text string) error
+// Replier is implemented by connections that can send formatted replies
+// (the Telegram Bot). The file bus does not answer users.
+type Replier interface {
+	SendReply(chat string, r Reply) error
 }
 
-// Responder answers direct (private-chat) messages to the bot with
-// read-only information from the local store. DM text is never parsed as
-// a frame and never enters the gossip log.
-type Responder struct {
-	Version   string
-	RepoURL   string
-	WikiURL   string
-	InviteURL string
-	Channels  []string // shown in the join command
+// Command is one bot command. The same table drives /help and the
+// Telegram command menu (setMyCommands), so they cannot drift apart.
+type Command struct {
+	Name  string // without the slash
+	Args  string // shown in /help, e.g. "handle@nym"
+	Short string // menu description (Telegram allows 3-256 chars)
+}
 
-	// Limit replies per chat per Window; extra messages are dropped.
+// Commands lists every command users can send, in menu order. /dump is a
+// node-to-node protocol message on gossip channels and is not listed.
+var Commands = []Command{
+	{"resolve", "handle@nym", "Look up a handle: owner, DID, attestation"},
+	{"status", "", "Node and network status"},
+	{"pin", "", "The network's trust pin"},
+	{"about", "", "What Telegraph is and how it works"},
+	{"version", "", "Node software version"},
+	{"help", "", "List commands"},
+	{"start", "", "Welcome"},
+}
+
+// MenuCommands is Commands in setMyCommands form.
+func MenuCommands() []BotCommand {
+	out := make([]BotCommand, len(Commands))
+	for i, c := range Commands {
+		out[i] = BotCommand{Command: c.Name, Description: c.Short}
+	}
+	return out
+}
+
+// Public links shown as inline buttons.
+const (
+	DefaultRepoURL    = "https://github.com/ao3575911/telegraph"
+	DefaultWikiURL    = "https://github.com/ao3575911/telegraph/wiki"
+	DefaultInviteURL  = "https://t.me/+KEEgOfyWFC1iZGE9"
+	DefaultReleaseURL = "https://github.com/ao3575911/telegraph/releases/latest"
+	DefaultNodeURL    = "https://github.com/ao3575911/telegraph#install"
+	maxHandleLen      = 64
+	pendingFor        = 5 * time.Minute
+)
+
+// Responder answers users with read-only information from the local
+// store. Text users send is never parsed as a frame and never enters the
+// gossip log.
+type Responder struct {
+	Version     string
+	BotUsername string // without @; groups are answered only when addressed to it
+
+	// Limit replies per chat per Window. The first message over the limit
+	// gets a short notice; later ones are dropped until the window clears.
 	Limit  int
 	Window time.Duration
 	Now    func() time.Time
 
-	mu   sync.Mutex
-	hits map[int64][]time.Time
+	mu       sync.Mutex
+	hits     map[int64][]time.Time
+	notified map[int64]bool
+	pending  map[int64]time.Time // chats asked "which handle?"
 }
-
-// Defaults for the public network.
-const (
-	DefaultRepoURL   = "https://github.com/ao3575911/telegraph"
-	DefaultWikiURL   = "https://github.com/ao3575911/telegraph/wiki"
-	DefaultInviteURL = "https://t.me/+KEEgOfyWFC1iZGE9"
-	maxHandleLen     = 64
-)
 
 func (r *Responder) now() time.Time {
 	if r.Now != nil {
@@ -53,9 +85,9 @@ func (r *Responder) now() time.Time {
 	return time.Now()
 }
 
-// allow records a message from chat and reports whether it may be
-// answered under the per-chat rate limit.
-func (r *Responder) allow(chat int64) bool {
+// allow records a message and reports whether to answer it; notice is
+// set for the first message over the limit.
+func (r *Responder) allow(chat int64) (ok bool, notice time.Duration) {
 	limit, win := r.Limit, r.Window
 	if limit <= 0 {
 		limit = 5
@@ -66,7 +98,7 @@ func (r *Responder) allow(chat int64) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.hits == nil || len(r.hits) > 10000 {
-		r.hits = map[int64][]time.Time{}
+		r.hits, r.notified, r.pending = map[int64][]time.Time{}, map[int64]bool{}, map[int64]time.Time{}
 	}
 	now := r.now()
 	kept := r.hits[chat][:0]
@@ -75,158 +107,300 @@ func (r *Responder) allow(chat int64) bool {
 			kept = append(kept, t)
 		}
 	}
+	r.hits[chat] = kept
 	if len(kept) >= limit {
-		r.hits[chat] = kept
+		if r.notified[chat] {
+			return false, 0
+		}
+		r.notified[chat] = true
+		wait := win - now.Sub(kept[0])
+		return false, (wait + time.Second - 1).Truncate(time.Second) // round up
+	}
+	r.notified[chat] = false
+	r.hits[chat] = append(kept, now)
+	return true, 0
+}
+
+// Incoming is one user message as the responder sees it.
+type Incoming struct {
+	Chat    int64
+	Private bool // false: group or supergroup
+	Text    string
+	ID      int64 // message id, for replies in groups
+}
+
+// Handle answers one message. ok is false when the bot should stay
+// silent (group chatter, rate-limited, empty).
+func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
+	text := strings.TrimSpace(in.Text)
+	if text == "" {
+		return Reply{}, false
+	}
+	cmd, arg, isCmd := r.parse(text)
+	if !in.Private {
+		// In groups, answer only commands explicitly addressed to this bot.
+		if !isCmd || !addressedTo(text, r.BotUsername) {
+			return Reply{}, false
+		}
+	} else if isCmd && !addressedOK(text, r.BotUsername) {
+		return Reply{}, false // /cmd@otherbot
+	}
+	ok, wait := r.allow(in.Chat)
+	if !ok {
+		if wait > 0 {
+			return r.reply(in, fmt.Sprintf("Too many messages. Try again in %d s.", int(wait.Seconds())), nil), true
+		}
+		return Reply{}, false
+	}
+	if !isCmd {
+		if in.Private && r.takePending(in.Chat) {
+			return r.resolve(st, in, text), true
+		}
+		if in.Private && looksLikeHandle(text) {
+			return r.resolve(st, in, text), true
+		}
+		return r.reply(in, "Send /help to see what I can do, or a handle like <code>alice@nym</code> to look it up.", nil), true
+	}
+	switch cmd {
+	case "start":
+		return r.start(in), true
+	case "help":
+		return r.help(in), true
+	case "resolve":
+		if arg == "" {
+			if !in.Private {
+				return r.reply(in, "Usage: <code>/resolve handle@nym</code>", nil), true
+			}
+			r.setPending(in.Chat)
+			rep := r.reply(in, "Which handle? Send it as a reply, for example <code>alice@nym</code>.", nil)
+			rep.ForceReply = "alice@nym"
+			return rep, true
+		}
+		return r.resolve(st, in, arg), true
+	case "pin":
+		return r.pin(st, in), true
+	case "status":
+		return r.status(st, in), true
+	case "about":
+		return r.about(in), true
+	case "version":
+		return r.version(in), true
+	}
+	return r.reply(in, fmt.Sprintf("Unknown command <code>/%s</code>. Send /help for the list.", esc(clip(cmd, 32))), nil), true
+}
+
+// parse splits "/Cmd@bot arg" into ("cmd", "arg", true).
+func (r *Responder) parse(text string) (cmd, arg string, isCmd bool) {
+	if !strings.HasPrefix(text, "/") || len(text) < 2 {
+		return "", "", false
+	}
+	head, rest, _ := strings.Cut(text, " ")
+	if i := strings.IndexAny(head, "\n\t"); i >= 0 {
+		rest = head[i+1:] + " " + rest
+		head = head[:i]
+	}
+	head = strings.TrimPrefix(head, "/")
+	if at := strings.IndexByte(head, '@'); at >= 0 {
+		head = head[:at]
+	}
+	return strings.ToLower(head), strings.TrimSpace(rest), true
+}
+
+func botSuffix(text string) string {
+	head, _, _ := strings.Cut(text, " ")
+	if at := strings.IndexByte(head, '@'); at >= 0 {
+		return head[at+1:]
+	}
+	return ""
+}
+
+func addressedTo(text, bot string) bool {
+	return bot != "" && strings.EqualFold(botSuffix(text), bot)
+}
+
+func addressedOK(text, bot string) bool {
+	s := botSuffix(text)
+	return s == "" || bot == "" || strings.EqualFold(s, bot)
+}
+
+func looksLikeHandle(s string) bool {
+	if utf8.RuneCountInString(s) > maxHandleLen || strings.Count(s, "@") != 1 {
 		return false
 	}
-	r.hits[chat] = append(kept, now)
-	return true
+	at := strings.IndexByte(s, '@')
+	return at > 0 && at < len(s)-1 && !strings.ContainsFunc(s, unicode.IsSpace)
 }
 
-// Handle answers one private message. It returns the HTML reply and
-// false when the message should be ignored (rate-limited or empty).
-func (r *Responder) Handle(st *store.Store, chat int64, text string) (string, bool) {
-	text = strings.TrimSpace(text)
-	if text == "" || !r.allow(chat) {
-		return "", false
+func (r *Responder) setPending(chat int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.pending == nil {
+		r.pending = map[int64]time.Time{}
 	}
-	cmd, arg, _ := strings.Cut(text, " ")
-	cmd = strings.ToLower(cmd)
-	if at := strings.IndexByte(cmd, '@'); at > 0 {
-		cmd = cmd[:at] // /start@telegraph_bot
-	}
-	arg = strings.TrimSpace(arg)
-	switch cmd {
-	case "/start":
-		return r.start(st), true
-	case "/help":
-		return r.help(), true
-	case "/resolve":
-		return r.resolve(st, arg), true
-	case "/pin":
-		return r.pin(st), true
-	case "/status":
-		return r.status(st), true
-	}
-	return "Send /help for commands, or /resolve <code>handle@nym</code>.", true
+	r.pending[chat] = r.now()
 }
 
-func esc(s string) string { return html.EscapeString(s) }
-
-func link(url, label string) string {
-	return fmt.Sprintf(`<a href="%s">%s</a>`, esc(url), esc(label))
+func (r *Responder) takePending(chat int64) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	t, ok := r.pending[chat]
+	delete(r.pending, chat)
+	return ok && r.now().Sub(t) < pendingFor
 }
 
-func (r *Responder) links() string {
-	repo, wiki, inv := r.RepoURL, r.WikiURL, r.InviteURL
-	if repo == "" {
-		repo = DefaultRepoURL
+// esc escapes text for Telegram's HTML parse mode, which needs only
+// &, < and > (and " inside attributes) escaped.
+var htmlEsc = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
+
+func esc(s string) string { return htmlEsc.Replace(s) }
+
+func clip(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
 	}
-	if wiki == "" {
-		wiki = DefaultWikiURL
-	}
-	if inv == "" {
-		inv = DefaultInviteURL
-	}
-	return link(repo, "GitHub") + " · " + link(wiki, "Wiki") + " · " + link(inv, "Channel")
+	return string([]rune(s)[:n]) + "…"
 }
 
-func (r *Responder) joinCmd(st *store.Store) string {
-	chans := "&lt;channel&gt;"
-	if len(r.Channels) > 0 {
-		chans = esc(strings.Join(r.Channels, ","))
+func (r *Responder) reply(in Incoming, text string, buttons [][]Button) Reply {
+	rep := Reply{HTML: text, Buttons: buttons}
+	if !in.Private {
+		rep.ReplyTo = in.ID
 	}
-	pin := "--genesis"
-	if st.Pin != "" {
-		pin = "--pin " + esc(st.Pin)
-	}
-	return "<pre>export TELEGRAPH_BOTS=&lt;your-bot-token&gt; TELEGRAPH_CHANNELS=" + chans +
-		"\ntelegraph init\ntelegraph sync " + pin + "</pre>"
+	return rep
 }
 
-func (r *Responder) start(st *store.Store) string {
+func linkButtons() [][]Button {
+	return [][]Button{
+		{{Text: "GitHub", URL: DefaultRepoURL}, {Text: "Wiki", URL: DefaultWikiURL}},
+		{{Text: "Channel", URL: DefaultInviteURL}, {Text: "Release", URL: DefaultReleaseURL}},
+	}
+}
+
+func (r *Responder) ver() string {
+	if r.Version == "" {
+		return "dev"
+	}
+	return r.Version
+}
+
+func (r *Responder) start(in Incoming) Reply {
+	return r.reply(in, "<b>⟁ Telegraph</b>\n"+
+		"A decentralised handle registry. Handles like <code>alice@nym</code> live in signed logs "+
+		"that nodes gossip over Telegram and checkpoint together.\n\n"+
+		"/resolve — look up a handle\n"+
+		"/status — this node and the network\n"+
+		"/help — every command\n\n"+
+		"Run your own node: <a href=\""+DefaultNodeURL+"\">README</a>", linkButtons())
+}
+
+func (r *Responder) help(in Incoming) Reply {
 	var b strings.Builder
-	fmt.Fprintf(&b, "<b>⟁ Telegraph</b> %s\n", esc(r.Version))
-	b.WriteString("A decentralised handle registry: signed, hash-chained logs gossiped over " +
-		"Telegram and attested by rotating 2-of-3 checkpoint committees.\n\n")
-	b.WriteString("<b>Install</b>\n<code>go install github.com/ao3575911/telegraph/cmd/telegraph@latest</code>\n\n")
-	b.WriteString("<b>Join</b> (the pin is the network's trust root)\n")
-	b.WriteString(r.joinCmd(st) + "\n")
-	b.WriteString(r.links() + "\n\n")
-	b.WriteString("/help quickstart · /resolve <code>handle@nym</code> · /pin · /status")
-	return b.String()
-}
-
-func (r *Responder) help() string {
-	return "<b>Quickstart</b> (three local nodes, no Telegram)\n<pre>" + esc(`go install github.com/ao3575911/telegraph/cmd/telegraph@latest
-export TG=/tmp/tg TELEGRAPH_BUS=/tmp/tg/bus.jsonl; mkdir -p $TG
-alice() { TELEGRAPH_HOME=$TG/alice telegraph "$@"; }
-bob()   { TELEGRAPH_HOME=$TG/bob   telegraph "$@"; }
-alice init && bob init
-alice register --handle alice@nym --did did:key:alice
-bob register --handle bob@nym --did did:key:bob
-alice sync --secs 0; bob sync --secs 0; alice sync --secs 0
-alice checkpoint; bob checkpoint
-alice sync --secs 0; bob verify alice@nym`) + "</pre>\n" +
-		"Full guide: " + link(DefaultRepoURL+"/blob/main/docs/QUICKSTART.md", "QUICKSTART") + "\n\n" +
-		"/resolve <code>handle@nym</code> · /pin · /status"
-}
-
-func (r *Responder) resolve(st *store.Store, handle string) string {
-	if handle == "" {
-		return "Usage: /resolve <code>handle@nym</code>"
+	b.WriteString("<b>Commands</b>\n")
+	for _, c := range Commands {
+		b.WriteString("/" + c.Name)
+		if c.Args != "" {
+			b.WriteString(" <i>" + esc(c.Args) + "</i>")
+		}
+		b.WriteString(" — " + esc(c.Short) + "\n")
 	}
-	if utf8.RuneCountInString(handle) > maxHandleLen || strings.ContainsAny(handle, " \n\t") {
-		return "That is not a handle. Usage: /resolve <code>handle@nym</code>"
+	b.WriteString("\nYou can also send a handle on its own, like <code>alice@nym</code>.")
+	return r.reply(in, b.String(), nil)
+}
+
+func (r *Responder) about(in Incoming) Reply {
+	return r.reply(in, "<b>About Telegraph</b>\n"+
+		"• Each node keeps a signed, hash-chained log of handle claims.\n"+
+		"• Nodes gossip entries over Telegram channels and merge them the same way, so they agree.\n"+
+		"• A rotating committee of three nodes signs checkpoints; two signatures make one valid.\n"+
+		"• New nodes trust only history that leads back to a published pin (/pin).\n"+
+		"• Handles can be swapped atomically between owners.\n\n"+
+		"No blockchain and no central server. Run your own node: <a href=\""+DefaultNodeURL+"\">README</a>",
+		linkButtons())
+}
+
+func (r *Responder) version(in Incoming) Reply {
+	return r.reply(in, "<b>Telegraph</b> "+esc(r.ver()),
+		[][]Button{{{Text: "Releases", URL: DefaultReleaseURL}}})
+}
+
+func (r *Responder) resolve(st *store.Store, in Incoming, handle string) Reply {
+	switch {
+	case utf8.RuneCountInString(handle) > maxHandleLen:
+		return r.reply(in, "That is too long for a handle (64 characters at most).", nil)
+	case !looksLikeHandle(handle):
+		return r.reply(in, "<code>"+esc(clip(handle, 64))+"</code> is not a handle. Handles look like <code>alice@nym</code>.", nil)
 	}
 	reg, err := st.Registry()
 	if err != nil {
-		return "⚠️ Local log failed verification; try again later."
+		return r.reply(in, "⚠️ This node's log failed verification. Try again later.", nil)
 	}
 	e, status, ok := reg.Resolve(handle)
 	if !ok {
-		return fmt.Sprintf("<b>%s</b> is not registered.", esc(handle))
+		return r.reply(in, "<b>"+esc(handle)+"</b> is not registered.", nil)
 	}
 	if e.Payload.Kind == tlog.KindRevoke {
-		return fmt.Sprintf("<b>%s</b> is revoked.", esc(handle))
+		return r.reply(in, "<b>"+esc(handle)+"</b> was revoked by its owner.", nil)
 	}
-	did := "<i>none yet (new owner has not registered one)</i>"
+	did := "<i>none yet (new owner has not set one)</i>"
 	if e.Payload.Kind == tlog.KindRegister {
-		did = "<code>" + esc(e.Payload.DID) + "</code>"
+		did = "<code>" + esc(clip(e.Payload.DID, 200)) + "</code>"
 	}
 	rep := checkpoint.Audit(st.Entries)
 	var att string
 	switch {
 	case rep.Diverged:
-		att = "⚠️ DIVERGED: local log disagrees with its checkpoint"
+		att = "⚠️ This node's log disagrees with its checkpoint"
 	case rep.NoCheckpoint:
-		att = "UNATTESTED: no checkpoint yet"
+		att = "Not attested yet: no checkpoint"
 	case rep.CoveredHashes[e.HashHex()]:
-		att = "✅ ATTESTED by checkpoint <code>" + short8(rep.CP.HashHex()) + "</code>"
+		att = "✅ Attested by checkpoint <code>" + short8(rep.CP.HashHex()) + "</code>"
 	default:
-		att = "UNCOVERED: newer than checkpoint <code>" + short8(rep.CP.HashHex()) + "</code>"
+		att = "⏳ Newer than the latest checkpoint"
 	}
-	return fmt.Sprintf("<b>%s</b>  [%s]\nowner  <code>%s</code>\nDID  %s\nsince  %s\n%s",
-		esc(handle), status.String(), short8(e.KeyHex()), did,
-		time.Unix(e.Payload.TS, 0).UTC().Format("2006-01-02 15:04 UTC"), att)
+	return r.reply(in, fmt.Sprintf("<b>%s</b> · %s\nOwner <code>%s</code>\nDID %s\nSince %s\n%s",
+		esc(handle), strings.ToLower(status.String()), short8(e.KeyHex()), did,
+		time.Unix(e.Payload.TS, 0).UTC().Format("2 Jan 2006 15:04 UTC"), att), nil)
 }
 
-func (r *Responder) pin(st *store.Store) string {
+func (r *Responder) pin(st *store.Store, in Incoming) Reply {
 	if st.Pin == "" {
-		return "This node has no pin yet: no checkpoint has been pinned."
+		return r.reply(in, "No pin yet: this node has not pinned a checkpoint.", nil)
 	}
-	return "<b>Trust pin</b>\n<code>" + esc(st.Pin) + "</code>\nPass it to your first sync: " +
-		"<code>telegraph sync --pin " + esc(st.Pin) + "</code>"
+	return r.reply(in, "<b>Trust pin</b>\n<code>"+esc(st.Pin)+"</code>\n"+
+		"New nodes accept only history that leads back to this checkpoint. "+
+		"It is a fingerprint, not a secret: share it freely.", nil)
 }
 
-func (r *Responder) status(st *store.Store) string {
-	rep := checkpoint.Audit(st.Entries)
+func ago(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d min ago", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d h ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+}
+
+func (r *Responder) status(st *store.Store, in Incoming) Reply {
 	var b strings.Builder
-	fmt.Fprintf(&b, "<b>⟁ Telegraph</b> %s\nentries  %d (%d issuers)\n",
-		esc(r.Version), len(st.Entries), len(checkpoint.Issuers(st.Entries)))
+	fmt.Fprintf(&b, "<b>⟁ Telegraph</b> %s\n", esc(r.ver()))
+	if len(st.Entries) == 0 {
+		b.WriteString("This node has no entries yet.")
+		return r.reply(in, b.String(), nil)
+	}
+	reg, _ := st.Registry()
+	handles := 0
+	if reg != nil {
+		handles = len(reg.Head)
+	}
+	fmt.Fprintf(&b, "Entries %d · handles %d · issuers %d\n",
+		len(st.Entries), handles, len(checkpoint.Issuers(st.Entries)))
+	rep := checkpoint.Audit(st.Entries)
 	if rep.NoCheckpoint {
-		b.WriteString("checkpoint  none yet")
-		return b.String()
+		b.WriteString("Checkpoint: none yet")
+		return r.reply(in, b.String(), nil)
 	}
 	cp := rep.CP
 	need := 1
@@ -235,16 +409,15 @@ func (r *Responder) status(st *store.Store) string {
 	}
 	state := "✅ audit clean"
 	if rep.Diverged {
-		state = "⚠️ audit diverged"
+		state = "⚠️ audit failed"
 	}
-	fmt.Fprintf(&b, "checkpoint  <code>%s</code> · %d entries · %s\ncommittee  %d members · %d of %d signatures\n%s",
-		short8(cp.HashHex()), cp.Payload.Count,
-		time.Unix(cp.Payload.TS, 0).UTC().Format("2006-01-02 15:04 UTC"),
+	fmt.Fprintf(&b, "Checkpoint <code>%s</code> · %d entries · %s\nCommittee %d · signatures %d of %d\n%s",
+		short8(cp.HashHex()), cp.Payload.Count, ago(r.now().Sub(time.Unix(cp.Payload.TS, 0))),
 		len(cp.Payload.Comm), 1+len(cp.CoSigs), need, state)
 	if rep.PendingCP > 0 {
 		fmt.Fprintf(&b, "\n%d checkpoint awaiting co-signature", rep.PendingCP)
 	}
-	return b.String()
+	return r.reply(in, b.String(), nil)
 }
 
 func short8(h string) string {

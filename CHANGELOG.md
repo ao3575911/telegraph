@@ -6,6 +6,44 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-15
+
+### Fixed
+
+- Direct messages never reached the node when Telegram kept an old update
+  filter: every poll now sends `allowed_updates`.
+- Long polls hung behind egress proxies: HTTP/1.1-only transport, 20 s
+  long-poll with a per-request deadline (poll time + 15 s), idle
+  connections dropped after a failure, and backoff with jitter (honouring
+  `retry_after`).
+- The bot token appeared in logged request errors; errors are redacted.
+- Repeated identical errors flooded the log; each is logged at most once a
+  minute with a repeat count.
+- `/help` showed shell commands and CLI flags instead of the bot's
+  commands; bot replies no longer contain CLI details.
+- The bot's command menu was missing commands and advertised `/dump`.
+- Any group could request a log dump or feed entries; only configured
+  channels gossip now.
+- `/resolve` without a handle gave only a usage line; it now asks for one.
+
+### Added
+
+- Command menu set on start (`setMyCommands`, default and private scopes)
+  and menu button; `/help` and the menu come from one table.
+- `/about` and `/version`; a handle sent on its own is resolved.
+- Inline GitHub, Wiki, Channel and Release buttons.
+- Groups: commands addressed to the bot (`/status@botname`) are answered as
+  replies; other group messages are ignored.
+- Rate-limit notice ("Try again in N s") once per window.
+- `scripts/install.sh`: install a release without Go, with SHA-256
+  verification.
+- `docs/TELEGRAM.md`.
+
+### Changed
+
+- README install section: script first, then `go install` pinned to a
+  version (`@latest` can lag behind new tags), then building from source.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added
@@ -81,6 +119,7 @@ uses [Semantic Versioning](https://semver.org/).
 - Merge order changed the merged entry order.
 - Auditor panics on short ids in hostile input.
 
-[Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ao3575911/telegraph/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ao3575911/telegraph/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ao3575911/telegraph/releases/tag/v0.1.0

@@ -31,15 +31,31 @@ command is in the [usage report](docs/USAGE-REPORT.md).
 
 ## Install
 
-Requires Go 1.22 or later.
+**Script** (Linux and macOS, no Go needed): downloads the latest release
+for your OS and CPU, verifies it against `SHA256SUMS`, and installs to
+`~/.local/bin` (set `BINDIR` to change it, `TELEGRAPH_VERSION` to pin one).
 
 ```sh
-go install github.com/ao3575911/telegraph/cmd/telegraph@latest
+curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh
 telegraph version
 ```
 
-Prebuilt binaries for Linux, macOS and Windows are attached to each
-[release](https://github.com/ao3575911/telegraph/releases).
+**Go 1.22+**, pinned to a release (`@latest` can lag behind a new tag for
+a while on the Go module proxy):
+
+```sh
+go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.1
+```
+
+**From source:**
+
+```sh
+git clone https://github.com/ao3575911/telegraph && cd telegraph
+go build -o telegraph ./cmd/telegraph && ./telegraph version
+```
+
+Windows: download the `.zip` from the
+[latest release](https://github.com/ao3575911/telegraph/releases/latest).
 See the [quickstart](docs/QUICKSTART.md) for a complete local run.
 
 ## Quickstart (local, no Telegram)
@@ -83,10 +99,11 @@ A new node bootstraps from peers that are serving:
 telegraph init && telegraph sync --pin <checkpoint-hash>
 ```
 
-A serving node also answers direct messages to its bot: `/start` (what
-Telegraph is, install and join commands), `/help` (quickstart),
-`/resolve handle@nym`, `/pin` and `/status`. Replies are read-only,
-rate-limited per chat, and DM text never enters the gossip log.
+A serving node also runs its bot for people: `/resolve handle@nym`,
+`/status`, `/pin`, `/about`, `/version`, `/help` and `/start`, listed in
+Telegram's command menu. Replies are read-only and rate-limited, and
+nothing users send ever enters the gossip log. See
+[docs/TELEGRAM.md](docs/TELEGRAM.md).
 
 The Telegram transport is the Bot API (`getUpdates`, `sendMessage`). The
 test suite exercises it against a fake Bot API server; multi-node tests and
@@ -120,7 +137,7 @@ vhs docs/demo/main.tape               # re-record a demo (charmbracelet/vhs)
 
 ## Status
 
-Pre-1.0 (0.2.0). The protocol and on-disk format may change. Known limits
+Pre-1.0 (0.2.1). The protocol and on-disk format may change. Known limits
 are listed in the [usage report](docs/USAGE-REPORT.md#open-issues).
 
 ## Licence

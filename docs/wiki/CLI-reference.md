@@ -41,17 +41,22 @@ telegraph <command> [flags]
 
 ## Bot commands
 
-A node running `sync --serve` over Telegram answers direct messages:
+A node running `sync --serve` over Telegram answers people in direct
+messages, and in groups when a command is addressed to it
+(`/status@botname`). The same list appears in Telegram's command menu.
 
-| Message | Reply |
+| Command | Reply |
 |---|---|
-| `/start` | What Telegraph is, install and join commands with the pin, links |
-| `/help` | Quickstart commands |
-| `/resolve handle@nym` | Owner, DID, status and checkpoint attestation |
-| `/pin` | The node's trust pin |
-| `/status` | Entries, latest checkpoint and committee signatures |
+| `/resolve handle@nym` | Owner, DID, status and checkpoint attestation (without a handle, it asks for one) |
+| `/status` | Entries, handles, latest checkpoint and committee signatures |
+| `/pin` | The network's trust pin |
+| `/about` | What Telegraph is and how it works |
+| `/version` | Node software version |
+| `/help` | Every command |
+| `/start` | Welcome, with GitHub, Wiki, Channel and Release buttons |
 
-Anything else gets a short hint. Replies are limited to 5 per chat per 30 s.
+A handle sent on its own is looked up too. Details:
+[TELEGRAM.md](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md).
 
 Exit status is 0 on success and 1 on any error; errors print as
 `✗ telegraph: …` on stderr.

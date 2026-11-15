@@ -44,6 +44,12 @@ jobs:
           go install ./cmd/telegraph
           PATH="$(go env GOPATH)/bin:$PATH" bash docs/demo/quickstart.sh
 
+      - name: Install script
+        run: |
+          shellcheck scripts/install.sh
+          BINDIR="$RUNNER_TEMP/bin" sh scripts/install.sh
+          "$RUNNER_TEMP/bin/telegraph" version
+
       - uses: actions/setup-go@v5.5.0
         with:
           go-version: stable
