@@ -38,6 +38,18 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **No raw Telegram user ids are stored or published** (Telegram bot
+  developer terms). The bot's default DID was `did:tg:<user id>`, signed
+  into the gossiped log, and custody in `data.json` kept raw ids. A node
+  now refers to a user by a tag, an HMAC-SHA256 of the id under a
+  node-local secret (`TELEGRAPH_HOME/telegram.secret`, 0600, never
+  gossiped): the default DID is `did:tg:<tag>` and custody stores tags
+  (`custodyTags`). Existing `custody` is migrated on open and the raw ids
+  leave `data.json` on the next save. New `telegraph redact-dids
+  [--apply]` re-registers handles whose current DID is still
+  `did:tg:<user id>` with the tag DID (old entries stay in the
+  append-only log and channel history). Tests check no raw id reaches the
+  bus or `data.json`.
 - **The pin check is mandatory.** Following the README in order (`init`,
   `register`, then `sync`) skipped the trust check: it ran only on an
   empty store, so a node that registered first merged whatever the

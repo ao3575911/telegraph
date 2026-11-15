@@ -54,8 +54,13 @@ there, with an Open button.
 - **Names.** `adz`, `Adz` and `adz@nym` all mean `adz@nym`. Names are 1–32
   characters of `a-z 0-9 _ . -`, not starting with `_ . -`; only `@nym`.
 - **DID.** `did:method:id`, at most 200 characters. Without one the handle
-  gets `did:tg:<telegram user id>`: a label tying it to your Telegram
-  account, not a resolvable DID, and public in the log.
+  gets `did:tg:<tag>`: a label tying it to your Telegram account on this
+  node, not a resolvable DID. The tag is an HMAC of your user id under a
+  secret only this node holds, so the public log does not reveal the id
+  (before v0.3.1 it was `did:tg:<telegram user id>`).
+- **Privacy.** The node never stores or gossips raw Telegram user ids:
+  custody records hold the same tag, and the secret
+  (`TELEGRAPH_HOME/telegram.secret`, mode 0600) never leaves the node.
 - **Refused:** handles owned by another key, handles the node's operator
   registered, handles another Telegram user holds, handles locked in a
   swap, a fourth handle per Telegram user, and any `/register` or

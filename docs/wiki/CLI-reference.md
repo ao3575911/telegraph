@@ -27,6 +27,7 @@ telegraph <command> [flags]
 | `swap status` | `--sid ID` | Show locks, claims and reclaims |
 | `committee` | | The next checkpoint committee (leader, fallbacks), which are this node or a configured peer, and their liveness |
 | `config` | `[key]` | Effective node settings without secrets; `config key` prints this node's public key |
+| `redact-dids` | `--apply` | List (or, with `--apply`, update) handles this node holds for Telegram users whose DID is the pre-v0.3.1 `did:tg:<user id>`; stop the serving node first, then sync |
 | `version` | | Print the version |
 
 ## Environment

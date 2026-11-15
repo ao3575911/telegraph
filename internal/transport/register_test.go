@@ -59,17 +59,17 @@ func TestNormaliseName(t *testing.T) {
 }
 
 func TestParseRegister(t *testing.T) {
-	h, d, def, err := parseRegister("adz", 42)
-	if err != nil || h != "adz@nym" || d != "did:tg:42" || !def {
+	h, d, def, err := parseRegister("adz", "t42")
+	if err != nil || h != "adz@nym" || d != "did:tg:t42" || !def {
 		t.Fatalf("default: %q %q %v %v", h, d, def, err)
 	}
-	h, d, def, err = parseRegister("adz did:key:z6MkTest", 42)
+	h, d, def, err = parseRegister("adz did:key:z6MkTest", "t42")
 	if err != nil || h != "adz@nym" || d != "did:key:z6MkTest" || def {
 		t.Fatalf("explicit: %q %q %v %v", h, d, def, err)
 	}
 	for _, bad := range []string{"", "a b c", "adz notadid", "adz did:", "adz did:key:", "adz did:KEY:x",
 		"adz did:key:<b>", "adz did:key:" + strings.Repeat("x", 200)} {
-		if _, _, _, err := parseRegister(bad, 42); err == nil {
+		if _, _, _, err := parseRegister(bad, "t42"); err == nil {
 			t.Errorf("parseRegister(%q) accepted", bad)
 		}
 	}
@@ -78,20 +78,21 @@ func TestParseRegister(t *testing.T) {
 func TestRegisterSignsAndResolves(t *testing.T) {
 	r, st := regResponder(t), memStore()
 	got := send(t, r, st, 42, "/register adz")
-	for _, want := range []string{"Registered <b>adz@nym</b>", "did:tg:42", "Held for you by this node", "user id", "/card"} {
+	tagDID := TelegramDID(st.TelegramTag(42))
+	for _, want := range []string{"Registered <b>adz@nym</b>", tagDID, "Held for you by this node", "not your user id", "/card"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("reply lacks %q: %s", want, got)
 		}
 	}
 	e, ok := resolved(t, st, "adz@nym")
-	if !ok || e.Payload.DID != "did:tg:42" || string(e.PubKey) != string(r.pub()) {
+	if !ok || e.Payload.DID != tagDID || string(e.PubKey) != string(r.pub()) {
 		t.Fatalf("not registered to the node key: %+v", e.Payload)
 	}
-	if st.Custody["adz@nym"] != 42 || len(st.Pending()) != 1 {
+	if st.Custody["adz@nym"] != st.TelegramTag(42) || len(st.Pending()) != 1 {
 		t.Fatalf("custody %v, pending %d", st.Custody, len(st.Pending()))
 	}
 	// Same DID again: no new entry. New DID: updated, and it wins.
-	if got := send(t, r, st, 42, "/register adz did:tg:42"); !strings.Contains(got, "already yours") {
+	if got := send(t, r, st, 42, "/register adz "+tagDID); !strings.Contains(got, "already yours") {
 		t.Errorf("repeat: %s", got)
 	}
 	if got := send(t, r, st, 42, "/register adz did:key:z6MkNew"); !strings.Contains(got, "Updated") {
@@ -216,7 +217,7 @@ func TestRegisterPublishesToChannel(t *testing.T) {
 			reply = true
 		}
 	}
-	if !frame || !reply || st.Custody["adz@nym"] != 42 || len(st.Pending()) != 0 {
+	if !frame || !reply || st.Custody["adz@nym"] != st.TelegramTag(42) || len(st.Pending()) != 0 {
 		t.Fatalf("frame %v reply %v custody %v pending %d", frame, reply, st.Custody, len(st.Pending()))
 	}
 }

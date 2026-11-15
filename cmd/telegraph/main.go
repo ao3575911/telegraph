@@ -77,6 +77,8 @@ func main() {
 		doCommittee(dir)
 	case "config":
 		doConfig(dir, args)
+	case "redact-dids":
+		doRedactDIDs(dir, args)
 	default:
 		errOut.Fail("unknown command %q", os.Args[1])
 		usage(errOut)
@@ -117,6 +119,7 @@ func usage(p *ui.Printer) {
 		{"swap STEP", "offer · accept · claim · reclaim · status"},
 		{"committee", "next checkpoint committee and peers"},
 		{"config [key]", "effective node settings (no secrets)"},
+		{"redact-dids [--apply]", "replace did:tg:<user id> DIDs this node holds"},
 		{"version", "print version"},
 	}
 	p.Printf("%s telegraph <command> [flags]\n\n", p.Bold("usage:"))

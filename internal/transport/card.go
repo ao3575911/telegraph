@@ -27,7 +27,7 @@ func (r *Responder) card(st *store.Store, in Incoming, arg string) Reply {
 	if in.User == 0 && !in.Private {
 		return r.badInput(in, "I cannot tell who sent that. Ask me in a private chat.")
 	}
-	user := sender(in)
+	user := senderTag(st, in)
 	handles := heldHandles(st, r.pub(), user)
 	if f := strings.Fields(arg); len(f) > 0 {
 		if len(f) > 1 {
