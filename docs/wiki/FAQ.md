@@ -27,14 +27,22 @@ The second committee member issues after the leader is an hour overdue,
 the third after two hours. The returning leader accepts their checkpoint.
 
 **What can I ask the bot?**
-Open the command menu, or send `/help`: `/resolve handle@nym`, `/status`,
-`/pin`, `/about`, `/version`, `/help`, `/start`. You can also send a
-handle on its own. Nothing sent to the bot is written to the log.
+Open the command menu, or send `/help`: `/resolve handle@nym`,
+`/register name [did]`, `/revoke name`, `/status`, `/pin`, `/about`,
+`/version`, `/help`, `/start`. You can also send a handle on its own.
+Only `/register` and `/revoke` write to the log, signed by the node.
+
+**Can I register from Telegram?**
+Yes, in a private chat with a bot whose node runs with `--bot-register`:
+`/register adz` gives `adz@nym`. It is custodial: the node's key owns the
+handle and only your Telegram account can change or revoke it through that
+node. With the CLI (`telegraph register --handle adz@nym --did did:key:adz`,
+then `telegraph sync`) your own key owns it.
 
 **How do I install without Go?**
 `curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh`
 downloads the release for your OS, checks its SHA-256 and installs it to
-`~/.local/bin`. With Go, pin the version (`@v0.2.1`): `@latest` can lag
+`~/.local/bin`. With Go, pin the version (`@v0.2.2`): `@latest` can lag
 behind a new tag on the module proxy.
 
 **Can a swap leave one side without a handle?**

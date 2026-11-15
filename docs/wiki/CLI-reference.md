@@ -12,7 +12,7 @@ telegraph <command> [flags]
 | `resolve H` | | Handle → DID, owner and state |
 | `verify H` | | `resolve` plus checkpoint attestation |
 | `audit` | | Check signatures, chains and the latest checkpoint |
-| `sync` | `--secs N` (5), `--serve`, `--pin P`, `--genesis`, `--bots`, `--channels`, `--bus`, `--checkpoint-only` | Publish pending entries and merge gossip; `--genesis` starts or joins a network with no checkpoint yet |
+| `sync` | `--secs N` (5), `--serve`, `--pin P`, `--genesis`, `--bots`, `--channels`, `--bus`, `--checkpoint-only`, `--bot-register` | Publish pending entries and merge gossip; `--genesis` starts or joins a network with no checkpoint yet; `--bot-register` lets Telegram users `/register` handles signed by this node |
 | `checkpoint` | | Issue a checkpoint if this node leads the committee, or as fallback #1/#2 when the leader is overdue |
 | `pin` | `--rotate` | Show the trust root, or advance it |
 | `peers` | | Known peers and liveness |
@@ -36,6 +36,7 @@ telegraph <command> [flags]
 | `TELEGRAPH_CHANNELS` | Comma-separated channels, e.g. `@chan1,@chan2` |
 | `TELEGRAPH_PIN` | Checkpoint hash to bootstrap from |
 | `TELEGRAPH_BUS` | Local file bus path, used instead of Telegram |
+| `TELEGRAPH_BOT_REGISTER` | `1` turns on the bot's `/register` (same as `--bot-register`) |
 | `NO_COLOR` | Disable colour |
 | `CLICOLOR_FORCE` | Force colour when stdout is not a terminal |
 
@@ -48,6 +49,8 @@ messages, and in groups when a command is addressed to it
 | Command | Reply |
 |---|---|
 | `/resolve handle@nym` | Owner, DID, status and checkpoint attestation (without a handle, it asks for one) |
+| `/register name [did]` | Register `name@nym`, signed by the node (custodial, DM only, node needs `--bot-register`) |
+| `/revoke name` | Revoke a handle you registered through the bot |
 | `/status` | Entries, handles, latest checkpoint and committee signatures |
 | `/pin` | The network's trust pin |
 | `/about` | What Telegraph is and how it works |
