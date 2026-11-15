@@ -13,7 +13,7 @@ import (
 // over the local log. Entries in a store were verified on admission, so
 // nothing is re-verified here.
 type NetStats struct {
-	Active, Revoked int // handles whose newest register/revoke is each
+	Active, Revoked int // handles owned now · handles freed by their owner's revoke (ownership fold)
 	Ever            int // distinct handles ever registered
 	Issuers         int // distinct signing keys of register entries
 	Online          int // peers with a heartbeat in the last 24 h
@@ -26,20 +26,14 @@ type NetStats struct {
 // Stats counts st at now.
 func Stats(st *store.Store, now time.Time) NetStats {
 	var s NetStats
-	type head struct {
-		kind tlog.Kind
-		ts   int64
-	}
-	heads := map[string]head{}
+	handles := map[string]bool{}
 	first := map[string]int64{}
 	issuers := map[string]bool{}
 	for i := range st.Entries {
 		p := &st.Entries[i].Payload
 		switch p.Kind {
 		case tlog.KindRegister, tlog.KindRevoke:
-			if h, ok := heads[p.Handle]; !ok || p.TS >= h.ts {
-				heads[p.Handle] = head{p.Kind, p.TS}
-			}
+			handles[p.Handle] = true
 			if p.Kind == tlog.KindRegister {
 				issuers[string(st.Entries[i].PubKey)] = true
 				if t, ok := first[p.Handle]; !ok || p.TS < t {
@@ -52,10 +46,15 @@ func Stats(st *store.Store, now time.Time) NetStats {
 			s.Checkpoints++
 		}
 	}
-	for _, h := range heads {
-		if h.kind == tlog.KindRegister {
+	// The same winner logic as /resolve: first-come ownership, swaps and
+	// finality (handshake.Resolve). The newest register or revoke from any
+	// key used to decide, so a void register or a stranger's revoke
+	// skewed the counts.
+	for h := range handles {
+		switch o := st.Ownership(h); {
+		case !o.Free:
 			s.Active++
-		} else {
+		case o.Pub != nil:
 			s.Revoked++
 		}
 	}

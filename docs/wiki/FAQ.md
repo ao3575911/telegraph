@@ -75,8 +75,10 @@ there.
 **How do I install without Go?**
 `curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh`
 downloads the release for your OS, checks its SHA-256 and installs it to
-`~/.local/bin`. With Go, pin the version (`@v0.2.3`): `@latest` can lag
-behind a new tag on the module proxy.
+`~/.local/bin`. With Go, `go install …/cmd/telegraph@latest` takes the
+newest tag (the module proxy can take a little while to see a brand-new
+one); pin a version such as `@v0.3.0` for a reproducible install. Every
+node of a network must run a compatible version.
 
 **Can a swap leave one side without a handle?**
 Not if both sides sync before their locks expire. The responder's lock
