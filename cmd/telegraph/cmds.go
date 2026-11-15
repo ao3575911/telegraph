@@ -245,7 +245,7 @@ func doSync(dir string, args []string) {
 	}
 	sy := transport.NewSyncer(conns, channels, st, mustKey(dir))
 	if *bus == "" {
-		sy.DM = &transport.Responder{Version: "v" + Version, Channels: channels}
+		sy.DM = &transport.Responder{Version: "v" + Version}
 	}
 
 	if *cpOnly {
@@ -292,6 +292,7 @@ func doSync(dir string, args []string) {
 	}
 	if *serve {
 		out.Info("serving: publish · poll · checkpoint · heartbeat")
+		sy.SetupBots()
 		sy.Serve()
 		return
 	}

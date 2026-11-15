@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/ao3575911/telegraph/internal/checkpoint"
@@ -38,6 +39,8 @@ type Syncer struct {
 	Now func() int64
 	// DM answers direct messages to the bot; nil ignores them.
 	DM *Responder
+
+	limiter *logLimiter
 }
 
 func NewSyncer(bots []Conn, channels []string, st *store.Store,
@@ -76,7 +79,7 @@ func (s *Syncer) PublishPending() (int, error) {
 			for _, bot := range s.Bots {
 				for _, ch := range s.Channels {
 					if err := bot.Send(ch, fr); err != nil {
-						log.Printf("publish %s -> %s: %v", e.HashHex()[:8], ch, err)
+						s.logf("publish %s -> %s: %v", e.HashHex()[:8], ch, err)
 					}
 				}
 			}
@@ -119,44 +122,93 @@ func (s *Syncer) IngestText(text string) (bool, error) {
 }
 
 func (s *Syncer) handleUpdate(b Conn, u Update) (bool, error) {
-	if u.Message != nil && u.Message.Chat.Type == "private" {
-		// Direct messages are answered, never ingested: nothing a user
-		// types to the bot can reach the gossip log.
-		s.answerDM(b, u.Message)
+	m := u.ChannelPost
+	if m == nil {
+		m = u.Message
+	}
+	if m == nil || m.Text == "" {
+		return false, nil // edits, membership changes, media
+	}
+	if u.Message != nil && !s.isGossipChat(m.Chat) {
+		// Direct messages and groups that are not configured gossip
+		// channels: answer users, never ingest. Nothing a user types to the
+		// bot can reach the gossip log, and no group can request a dump.
+		s.answerUser(b, m)
 		return false, nil
 	}
-	text, replyChat := "", ""
-	if u.ChannelPost != nil {
-		text = u.ChannelPost.Text
-		replyChat = fmt.Sprintf("%d", u.ChannelPost.Chat.ID)
-	} else if u.Message != nil {
-		text, replyChat = u.Message.Text, fmt.Sprintf("%d", u.Message.Chat.ID)
+	if !s.isGossipChat(m.Chat) {
+		return false, nil // a channel this node does not gossip on
 	}
-	if text == "" {
-		return false, nil
-	}
-	if text == "/dump" {
+	if m.Text == "/dump" {
 		if s.staging {
 			return false, nil // don't answer dumps while bootstrapping
 		}
-		s.DumpTo(b, replyChat)
+		s.DumpTo(b, fmt.Sprintf("%d", m.Chat.ID))
 		return false, nil
 	}
-	return s.IngestText(text)
+	return s.IngestText(m.Text)
 }
 
-func (s *Syncer) answerDM(b Conn, m *Msg) {
-	hs, ok := b.(HTMLSender)
+// isGossipChat reports whether c is one of the configured channels (by
+// numeric id or @username). The file bus has no chat ids (0) and is always
+// a gossip chat.
+func (s *Syncer) isGossipChat(c Chat) bool {
+	if c.ID == 0 && c.Type == "" {
+		return true
+	}
+	id := fmt.Sprintf("%d", c.ID)
+	for _, ch := range s.Channels {
+		if ch == id || (c.Username != "" && strings.EqualFold(strings.TrimPrefix(ch, "@"), c.Username)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Syncer) answerUser(b Conn, m *Msg) {
+	rp, ok := b.(Replier)
 	if s.DM == nil || !ok {
 		return
 	}
-	reply, ok := s.DM.Handle(s.Store, m.Chat.ID, m.Text)
+	private := m.Chat.Type == "private"
+	if !private && m.Chat.Type != "group" && m.Chat.Type != "supergroup" {
+		return
+	}
+	reply, ok := s.DM.Handle(s.Store, Incoming{Chat: m.Chat.ID, Private: private, Text: m.Text, ID: m.MessageID})
 	if !ok {
 		return
 	}
-	if err := hs.SendHTML(fmt.Sprintf("%d", m.Chat.ID), reply); err != nil {
-		log.Printf("dm reply: %v", err)
+	if err := rp.SendReply(fmt.Sprintf("%d", m.Chat.ID), reply); err != nil {
+		s.logf("reply: %v", err)
 	}
+}
+
+// SetupBots fetches each bot's username (for group addressing) and
+// publishes the command menu. Failures are logged, not fatal.
+func (s *Syncer) SetupBots() {
+	for _, c := range s.Bots {
+		b, ok := c.(*Bot)
+		if !ok {
+			continue
+		}
+		if err := b.GetMe(); err != nil {
+			s.logf("getMe: %v", err)
+		} else if s.DM != nil && s.DM.BotUsername == "" {
+			s.DM.BotUsername = b.Username
+		}
+		if s.DM != nil {
+			if err := b.SetupMenu(MenuCommands()); err != nil {
+				s.logf("command menu: %v", err)
+			}
+		}
+	}
+}
+
+func (s *Syncer) logf(format string, args ...any) {
+	if s.limiter == nil {
+		s.limiter = newLogLimiter(log.Printf)
+	}
+	s.limiter.Printf(format, args...)
 }
 
 // DumpTo streams the full local log as frames to a chat.
@@ -169,7 +221,7 @@ func (s *Syncer) DumpTo(b Conn, chat string) {
 		}
 		for _, fr := range SplitFrames(e.HashHex(), enc) {
 			if err := b.Send(chat, fr); err != nil {
-				log.Printf("dump to %s: %v", chat, err)
+				s.logf("dump to %s: %v", chat, err)
 				return
 			}
 		}
@@ -180,14 +232,14 @@ func (s *Syncer) PollWindow(winSec int) (int, error) {
 	merged, deadline := 0, nowSec()+int64(winSec)
 	for {
 		for _, b := range s.Bots {
-			ups, err := b.Poll(25)
+			ups, err := b.Poll(PollTimeout)
 			if err != nil {
-				log.Printf("poll: %v", err)
+				s.logf("poll: %v", err)
 				continue
 			}
 			for _, u := range ups {
 				if ok, err := s.handleUpdate(b, u); err != nil {
-					log.Printf("update: %v", err)
+					s.logf("update: %v", err)
 				} else if ok {
 					merged++
 				}
@@ -337,14 +389,14 @@ func (s *Syncer) Bootstrap(winSec int) (int, error) {
 	merged, deadline := 0, nowSec()+int64(winSec)
 	for {
 		for _, b := range s.Bots {
-			ups, err := b.Poll(25)
+			ups, err := b.Poll(PollTimeout)
 			if err != nil {
-				log.Printf("poll: %v", err)
+				s.logf("poll: %v", err)
 				continue
 			}
 			for _, u := range ups {
 				if ok, err := s.handleUpdate(b, u); err != nil {
-					log.Printf("update: %v", err)
+					s.logf("update: %v", err)
 				} else if ok {
 					merged++
 				}
