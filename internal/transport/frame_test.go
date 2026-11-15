@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
 	mrand "math/rand"
 	"testing"
 	"time"
@@ -115,5 +116,41 @@ func dieOnT(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAssemblerHostileFrames(t *testing.T) {
+	a := NewAssembler()
+	if _, _, _, err := a.Add("TGP1|x|0|3|AA=="); err != nil {
+		t.Fatal(err)
+	}
+	// a later frame for the same id with a different total used to index
+	// past the slice and panic the node
+	if _, _, _, err := a.Add("TGP1|x|5|10|AA=="); err != ErrBadFrame {
+		t.Fatalf("total mismatch: err = %v, want ErrBadFrame", err)
+	}
+	// a huge total used to allocate total slice headers up front
+	if _, _, _, err := a.Add("TGP1|y|0|2147483647|AA=="); err != ErrBadFrame {
+		t.Fatalf("huge total: err = %v, want ErrBadFrame", err)
+	}
+	// unfinished entries are bounded
+	for i := 0; i < 3*maxPartial; i++ {
+		a.Add(fmt.Sprintf("TGP1|p%d|0|2|AA==", i))
+	}
+	for i := 0; i < 3*maxPartial; i++ { // big totals: bounded by bytes, not count
+		a.Add(fmt.Sprintf("TGP1|q%d|0|%d|AA==", i, MaxFrames))
+	}
+	if a.bytes > maxBuffered {
+		t.Fatalf("buffered %d bytes, cap %d", a.bytes, maxBuffered)
+	}
+	if len(a.parts) > maxPartial || len(a.order) != len(a.parts) {
+		t.Fatalf("partials = %d (order %d), cap %d", len(a.parts), len(a.order), maxPartial)
+	}
+	// a real two-part entry still assembles after the flood
+	fr := SplitFrames("ok", bytes.Repeat([]byte("z"), MaxChunk+1))
+	a.Add(fr[0])
+	data, _, done, err := a.Add(fr[1])
+	if err != nil || !done || len(data) != MaxChunk+1 {
+		t.Fatalf("assemble after flood: done=%v len=%d err=%v", done, len(data), err)
 	}
 }

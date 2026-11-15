@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
 )
 
@@ -107,11 +108,76 @@ func (e *Entry) Verify() error { return VerifyAt(e, time.Now().Unix()) }
 
 // VerifyAt: hash + signature + wall-clock sanity. Past timestamps are
 // NEVER rejected — old signed history stays valid forever.
+//
+// Successful verifications are memoised (see verifiedCache): a node
+// re-verifies its whole log on every /resolve, audit and checkpoint, and
+// the ed25519 check dominated those paths. The memo key covers every
+// byte the verdict depends on, and a pass never turns into a failure as
+// the clock advances, so a hit is exactly as strong as re-verifying.
 func VerifyAt(e *Entry, now int64) error {
 	if e.Payload.TS-now > MaxFutureDrift {
 		return ErrFutureTS
 	}
-	return e.verifyRaw()
+	k, ok := e.verifyKey()
+	if ok && verified.has(k) {
+		return nil
+	}
+	err := e.verifyRaw()
+	if err == nil && ok {
+		verified.add(k)
+	}
+	return err
+}
+
+// verifyKey hashes the signing bytes, claimed hash, signature and
+// co-signatures: everything verifyRaw reads.
+func (e *Entry) verifyKey() ([32]byte, bool) {
+	b, err := e.SigningBytes()
+	if err != nil {
+		return [32]byte{}, false
+	}
+	h := sha256.New()
+	h.Write(b)
+	h.Write([]byte{0})
+	h.Write(e.Hash)
+	h.Write([]byte{0})
+	h.Write(e.Sig)
+	for _, c := range e.CoSigs {
+		h.Write([]byte{1, byte(len(c.Pub))})
+		h.Write(c.Pub)
+		h.Write([]byte{byte(len(c.Sig))})
+		h.Write(c.Sig)
+	}
+	var k [32]byte
+	h.Sum(k[:0])
+	return k, true
+}
+
+// verifiedCache is a bounded set of verification keys. When full it is
+// cleared, which costs only re-verification.
+type verifiedCache struct {
+	mu sync.RWMutex
+	m  map[[32]byte]struct{}
+}
+
+const maxVerified = 1 << 21
+
+var verified = &verifiedCache{m: map[[32]byte]struct{}{}}
+
+func (c *verifiedCache) has(k [32]byte) bool {
+	c.mu.RLock()
+	_, ok := c.m[k]
+	c.mu.RUnlock()
+	return ok
+}
+
+func (c *verifiedCache) add(k [32]byte) {
+	c.mu.Lock()
+	if len(c.m) >= maxVerified {
+		c.m = map[[32]byte]struct{}{}
+	}
+	c.m[k] = struct{}{}
+	c.mu.Unlock()
 }
 
 func (e *Entry) verifyRaw() error {

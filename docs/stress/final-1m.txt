@@ -1,0 +1,37 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              1000000
+gen        keygen+sign                        1000000 in 5.381s = 185825 ops/s
+gen        avg entry JSON bytes               317
+gen        avg TGP1 frames/entry              1
+gen        mem                                rss=1176748 kB peak=1176748 kB heap=844MiB
+ingest     done                               1000000 in 48.155s = 20766 ops/s
+ingest     latency                            p50=44µs p99=74µs max=336.891ms (n=1000000)
+ingest     mem                                rss=2839284 kB peak=2839284 kB heap=2702MiB
+save       full rewrite                       5.391s
+save       data.json size                     528777841 bytes (504.3 MiB, 529 B/entry)
+save       mem                                rss=4802256 kB peak=4802256 kB heap=2834MiB
+load       store.Open                         3.55s (1000000 entries)
+load       mem                                rss=4389676 kB peak=4801964 kB heap=2394MiB
+registry   Registry() full verify+fold        3.312s err=<nil> heads=1000000
+registry   mem                                rss=2906540 kB peak=4801964 kB heap=1842MiB
+resolve    done                               500 in 22.493s = 22 ops/s
+resolve    latency                            p50=44.083ms p99=63.098ms max=70.126ms (n=500)
+audit      checkpoint.Audit                   5.879s sigOK=1000000 orphans=0
+checkpoint ChainHeads                         2.167s (1000000 heads)
+checkpoint merkle.Root                        731ms
+checkpoint SelectCommittee                    1.767s
+checkpoint sign+cosign 2-of-3                 1.109s
+checkpoint verify                             882ms err=<nil>
+checkpoint checkpoint entry size              67000687 bytes, 23929 TGP1 frames
+checkpoint publish @20 msg/min                19h56m27s
+checkpoint DumpVerdict (pin check)            11.404s ok=true 
+checkpoint mem                                rss=4123696 kB peak=4927148 kB heap=2404MiB
+merge      Merge 3 nodes                      4.68s all=1000000 heads=1000000
+merge      order-independent & complete       true
+merge      mem                                rss=6478816 kB peak=6603544 kB heap=2764MiB
+gossip     A publish to FileBus               20000 in 167ms = 119436 ops/s err=<nil>
+gossip     B ingest via Syncer+save           20000 in 710ms = 28169 ops/s (20000/20000)
+gossip     mem                                rss=5668980 kB peak=6603544 kB heap=3064MiB
+runtime: out of memory: cannot allocate 482344960-byte block (6735527936 in use)
+fatal error: out of memory

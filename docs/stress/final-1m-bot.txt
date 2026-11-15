@@ -1,0 +1,21 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              1000000
+gen        keygen+sign                        1000000 in 5.274s = 189609 ops/s
+gen        avg entry JSON bytes               317
+gen        avg TGP1 frames/entry              1
+gen        mem                                rss=1180592 kB peak=1180592 kB heap=849MiB
+bot        done                               300 in 1m0.867s = 5 ops/s
+bot        latency                            p50=193.509ms p99=302.438ms max=770.307ms (n=300)
+bot        register failures                  0
+bot        store entries after                1000300
+bot-res    done                               50 in 59.17s = 1 ops/s
+bot-res    latency                            p50=50.846ms p99=155.4ms max=56.30052s (n=50)
+bot-stats  done                               20 in 19.263s = 1 ops/s
+bot-stats  latency                            p50=943.541ms p99=1.182687s max=1.717706s (n=20)
+bot        4th handle refused (cap 3)         true
+bot        rate limit 20 msgs burst           answered=5 notices=1 dropped=14
+bot        20k distinct chats /version        20000 in 886ms = 22573 ops/s
+bot        limit bypass via 10k-chat flood    victim answered 5 then 0 within one window (limit 5 per 30 s; second > 0 means bypass)
+bot        mem                                rss=3481628 kB peak=5271376 kB heap=1777MiB
+end        mem                                rss=3481640 kB peak=5271376 kB heap=1777MiB

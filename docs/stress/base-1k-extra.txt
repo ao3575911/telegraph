@@ -1,0 +1,25 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              1000
+gen        keygen+sign                        1000 in 7ms = 136294 ops/s
+gen        avg entry JSON bytes               315
+gen        avg TGP1 frames/entry              1
+gen        mem                                rss=12340 kB peak=12340 kB heap=2MiB
+gossip     A publish to FileBus               1000 in 8ms = 125747 ops/s err=<nil>
+gossip     B ingest via Syncer+save           1000 in 1.471s = 680 ops/s (1000/1000)
+gossip     mem                                rss=18080 kB peak=20368 kB heap=6MiB
+bot        done                               931 in 1m0.085s = 15 ops/s
+bot        BUDGET EXCEEDED                    931/1000 done; tail 82.427ms/op; remaining >= 6s (EXTRAPOLATED, linear)
+bot        latency                            p50=64.45ms p99=91.473ms max=121.855ms (n=931)
+bot        register failures                  0
+bot        store entries after                1931
+bot-res    done                               50 in 8.692s = 6 ops/s
+bot-res    latency                            p50=170.712ms p99=192.957ms max=204.092ms (n=50)
+bot-stats  done                               20 in 0s = 1377410 ops/s
+bot-stats  latency                            p50=0s p99=1µs max=4µs (n=20)
+bot        4th handle refused (cap 3)         true
+bot        rate limit 20 msgs burst           answered=5 notices=1 dropped=14
+bot        20k distinct chats /version        20000 in 9ms = 2332838 ops/s
+bot        limit bypass via 10k-chat flood    victim answered 5 then 5 within one window (limit 5 per 30 s; second > 0 means bypass)
+bot        mem                                rss=17344 kB peak=22448 kB heap=3MiB
+end        mem                                rss=17344 kB peak=22448 kB heap=3MiB

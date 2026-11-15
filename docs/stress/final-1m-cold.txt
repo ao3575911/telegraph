@@ -1,0 +1,10 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              1000000
+gen        keygen+sign                        1000000 in 6.816s = 146708 ops/s
+gen        avg entry JSON bytes               317
+gen        avg TGP1 frames/entry              1
+gen        mem                                rss=1545200 kB peak=1545200 kB heap=1142MiB
+registry   Registry() full verify+fold        45.268s err=<nil> heads=1000000
+registry   mem                                rss=3223908 kB peak=3223908 kB heap=2641MiB
+end        mem                                rss=3223944 kB peak=3223944 kB heap=2641MiB

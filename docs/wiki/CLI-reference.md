@@ -52,6 +52,7 @@ messages, and in groups when a command is addressed to it
 | `/register name [did]` | Register `name@nym`, signed by the node (custodial, DM only, node needs `--bot-register`) |
 | `/revoke name` | Revoke a handle you registered through the bot |
 | `/status` | Entries, handles, latest checkpoint and committee signatures |
+| `/stats` | Network counts and early-adopter spots left |
 | `/pin` | The network's trust pin |
 | `/about` | What Telegraph is and how it works |
 | `/version` | Node software version |

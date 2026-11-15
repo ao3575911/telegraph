@@ -1,0 +1,12 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              2000000
+gen        keygen+sign                        2000000 in 12.573s = 159077 ops/s
+gen        avg entry JSON bytes               317
+gen        avg TGP1 frames/entry              1
+gen        mem                                rss=3390688 kB peak=3390688 kB heap=1606MiB
+ingest     done                               2000000 in 1m36.166s = 20797 ops/s
+ingest     latency                            p50=44µs p99=73µs max=1.083059s (n=2000000)
+ingest     mem                                rss=5856448 kB peak=5856448 kB heap=4343MiB
+runtime: out of memory: cannot allocate 738197504-byte block (7553417216 in use)
+fatal error: out of memory

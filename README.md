@@ -108,7 +108,7 @@ Telegram's command menu and rate-limited:
 | `/resolve handle@nym` | owner, DID, status and checkpoint attestation |
 | `/register name [did]` | register `name@nym`, signed by this node for you (custodial; DM only; needs `--bot-register`) |
 | `/revoke name` | revoke a handle you registered through the bot |
-| `/status` · `/pin` | node and network status · the trust pin |
+| `/status` · `/stats` · `/pin` | node and network status · network counts and early-adopter spots · the trust pin |
 | `/about` · `/version` · `/help` · `/start` | about, version, every command, welcome |
 
 Text people send is never parsed as gossip: the only entries the bot

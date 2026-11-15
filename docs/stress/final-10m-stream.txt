@@ -1,0 +1,11 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              10000000
+stream     keygen+sign+encode                 10000000 in 51.466s = 194302 ops/s
+stream     wire JSON total                    3.02 GiB
+stream     TGP1 frames                        10000000
+stream     publish @20 msg/min/channel        347.2 days
+stream     mem (hashes only)                  rss=1908000 kB peak=1908000 kB heap=1491MiB
+stream     merkle.Root                        9.386s (10c23f65…)
+stream     hash index build                   1.974s (10000000 keys)
+stream     mem (hashes+index)                 rss=3029272 kB peak=3029272 kB heap=1189MiB

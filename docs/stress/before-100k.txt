@@ -1,0 +1,54 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              100000
+gen        keygen+sign                        100000 in 559ms = 179002 ops/s
+gen        avg entry JSON bytes               317
+gen        avg TGP1 frames/entry              1
+gen        mem                                rss=127696 kB peak=127696 kB heap=98MiB
+ingest     done                               37225 in 1m0.002s = 620 ops/s
+ingest     BUDGET EXCEEDED                    37225/100000 done; tail 4.63ms/op; remaining >= 4m51s (EXTRAPOLATED, linear)
+ingest     latency                            p50=1.101ms p99=11.195ms max=34.571ms (n=37225)
+ingest     mem                                rss=202932 kB peak=227388 kB heap=104MiB
+save       full rewrite                       1.937s
+save       data.json size                     63577875 bytes (60.6 MiB, 636 B/entry)
+save       mem                                rss=542784 kB peak=542784 kB heap=325MiB
+load       store.Open                         595ms (100000 entries)
+load       mem                                rss=495976 kB peak=542132 kB heap=232MiB
+registry   Registry() full verify+fold        5.929s err=<nil> heads=100000
+registry   mem                                rss=287296 kB peak=542132 kB heap=177MiB
+resolve    done                               500 in 1.455s = 344 ops/s
+resolve    latency                            p50=2.161ms p99=10ms max=19.847ms (n=500)
+audit      checkpoint.Audit                   6.195s sigOK=100000 orphans=0
+checkpoint ChainHeads                         335ms (100000 heads)
+checkpoint merkle.Root                        91ms
+checkpoint SelectCommittee                    148ms
+checkpoint sign+cosign 2-of-3                 145ms
+checkpoint verify                             55ms err=<nil>
+checkpoint checkpoint entry size              6700686 bytes, 2394 TGP1 frames
+checkpoint publish @20 msg/min                1h59m42s
+checkpoint DumpVerdict (pin check)            7.651s ok=true 
+checkpoint mem                                rss=429924 kB peak=542132 kB heap=175MiB
+merge      Merge 3 nodes                      494ms all=100000 heads=100000
+merge      order-independent & complete       true
+merge      mem                                rss=611752 kB peak=611752 kB heap=350MiB
+swap       build 4 entries x swaps            1000 in 270ms = 3709 ops/s
+swap       resolve after swap                 p50=3.229ms p99=6.665ms max=7.887ms (n=200)
+swap       wrong owner after swap             0 of 200
+bot        done                               11 in 1m3.784s = 0 ops/s
+bot        BUDGET EXCEEDED                    11/30 done; tail 5.986753s/op; remaining >= 1m54s (EXTRAPOLATED, linear)
+bot        latency                            p50=5.73103s p99=6.110816s max=6.242477s (n=11)
+bot        register failures                  0
+bot        store entries after                100011
+bot-res    done                               7 in 1m2.905s = 0 ops/s
+bot-res    BUDGET EXCEEDED                    7/50 done; tail 8.852985s/op; remaining >= 6m21s (EXTRAPOLATED, linear)
+bot-res    latency                            p50=8.852985s p99=9.282969s max=9.508077s (n=7)
+bot        4th handle refused (cap 3)         true
+bot        rate limit 20 msgs burst           answered=5 notices=1 dropped=14
+bot        20k distinct chats /version        20000 in 7ms = 2725070 ops/s
+bot        limit bypass via 10k-chat flood    victim answered 5 then 5 within one window (limit 5 per 30 s; second > 0 means bypass)
+bot        mem                                rss=500316 kB peak=646940 kB heap=306MiB
+telegram   messages to publish N entries      100000
+telegram   publish time @20 msg/min/channel   83h20m0s
+telegram   bootstrap /dump replay @20 msg/min 83h20m0s
+telegram   channel bytes (base64)             46.7 MiB
+end        mem                                rss=500328 kB peak=646940 kB heap=325MiB
