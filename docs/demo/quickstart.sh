@@ -1,6 +1,6 @@
 # Quickstart: three Telegraph nodes on one machine over a local file bus.
 # The same commands as docs/QUICKSTART.md; CI runs this file.
-# Needs `telegraph` on PATH (scripts/install.sh, or go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.3).
+# Needs `telegraph` on PATH (scripts/install.sh, or go install github.com/ao3575911/telegraph/cmd/telegraph@latest).
 set -eu
 export TG=/tmp/telegraph-quickstart && rm -rf "$TG" && mkdir -p "$TG"
 export TELEGRAPH_BUS="$TG/bus.jsonl"

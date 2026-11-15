@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh
 #
 # Environment:
-#   TELEGRAPH_VERSION  release tag to install, e.g. v0.2.1 (default: latest)
+#   TELEGRAPH_VERSION  release tag to install, e.g. v0.3.0 (default: latest)
 #   BINDIR             install directory (default: ~/.local/bin)
 #   TELEGRAPH_DOWNLOAD_BASE  release download base URL (mirrors, tests)
 set -eu

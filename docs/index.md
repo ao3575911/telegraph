@@ -12,7 +12,7 @@ committees. One static Go binary, standard library only.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh  # no Go needed
-go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.3                               # or with Go 1.22+
+go install github.com/ao3575911/telegraph/cmd/telegraph@latest                               # or with Go 1.22+
 ```
 
 On Telegram, DM a node's bot: `/resolve alice@nym` to look up a handle, or
