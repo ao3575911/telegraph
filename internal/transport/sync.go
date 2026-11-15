@@ -17,6 +17,10 @@ import (
 
 const HBInterval = 6 * time.Hour
 
+// CPCheckEvery is how often a serving node checks whether a checkpoint
+// is due from it (as leader or fallback).
+var CPCheckEvery = 10 * time.Minute
+
 // Syncer: bots + channels + local state. Nothing arriving over Telegram
 // is trusted until tlog.Entry.Verify() passes; the channel is a dumb bus.
 type Syncer struct {
@@ -28,6 +32,12 @@ type Syncer struct {
 	lastCP   time.Time
 	lastHB   time.Time
 	staging  bool
+
+	// Now returns the current Unix time; nil means the wall clock. Tests
+	// set it to exercise fallback timing.
+	Now func() int64
+	// DM answers direct messages to the bot; nil ignores them.
+	DM *Responder
 }
 
 func NewSyncer(bots []Conn, channels []string, st *store.Store,
@@ -41,6 +51,13 @@ func (s *Syncer) pub() []byte {
 }
 
 func nowSec() int64 { return time.Now().Unix() }
+
+func (s *Syncer) now() int64 {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return nowSec()
+}
 
 // PublishPending frames every entry not yet seen on the wire and fans it
 // out through every bot x channel. Redundant on purpose.
@@ -87,7 +104,7 @@ func (s *Syncer) IngestText(text string) (bool, error) {
 	if err := e.Verify(); err != nil && !tlog.IsPendingQuorum(err) {
 		return true, fmt.Errorf("reassembled entry failed verify: %w", err)
 	}
-	if tlog.OldEntry(e, nowSec()) && !s.Store.Seen[e.HashHex()] {
+	if tlog.OldEntry(e, s.now()) && !s.Store.Seen[e.HashHex()] {
 		log.Printf("note: entry %s claims ts %d (>30d old) — bootstrap replay?",
 			e.HashHex()[:8], e.Payload.TS)
 	}
@@ -102,6 +119,12 @@ func (s *Syncer) IngestText(text string) (bool, error) {
 }
 
 func (s *Syncer) handleUpdate(b Conn, u Update) (bool, error) {
+	if u.Message != nil && u.Message.Chat.Type == "private" {
+		// Direct messages are answered, never ingested: nothing a user
+		// types to the bot can reach the gossip log.
+		s.answerDM(b, u.Message)
+		return false, nil
+	}
 	text, replyChat := "", ""
 	if u.ChannelPost != nil {
 		text = u.ChannelPost.Text
@@ -120,6 +143,20 @@ func (s *Syncer) handleUpdate(b Conn, u Update) (bool, error) {
 		return false, nil
 	}
 	return s.IngestText(text)
+}
+
+func (s *Syncer) answerDM(b Conn, m *Msg) {
+	hs, ok := b.(HTMLSender)
+	if s.DM == nil || !ok {
+		return
+	}
+	reply, ok := s.DM.Handle(s.Store, m.Chat.ID, m.Text)
+	if !ok {
+		return
+	}
+	if err := hs.SendHTML(fmt.Sprintf("%d", m.Chat.ID), reply); err != nil {
+		log.Printf("dm reply: %v", err)
+	}
 }
 
 // DumpTo streams the full local log as frames to a chat.
@@ -167,38 +204,62 @@ func (s *Syncer) PollWindow(winSec int) (int, error) {
 // already covers exactly the current log, so a new one would only fork.
 var ErrAlreadyCheckpointed = errors.New("current log already checkpointed")
 
-// IssueCheckpoint builds and publishes a checkpoint when this node leads
-// the committee for the current log (entries before this second). It returns (nil, nil) when the duty
-// belongs to other nodes.
+// IssueCheckpoint builds and publishes a checkpoint over every chain this
+// node holds when it leads the committee, or when it is a fallback member
+// and the leader is overdue (see checkpoint.Due). It returns (nil, nil)
+// when the duty belongs to other nodes.
 func (s *Syncer) IssueCheckpoint() (*tlog.Entry, error) {
-	ts := nowSec()
-	log := checkpoint.Covered(s.Store.LogEntries(), ts)
+	cp, _, err := s.IssueCheckpointRank(false)
+	return cp, err
+}
+
+// IssueCheckpointRank is IssueCheckpoint that also reports this node's
+// committee rank (0 leader, 1-2 fallback, -1 not a member). With dueOnly,
+// the leader too waits until the oldest uncovered entry is
+// checkpoint.Interval old, as the serving loop does.
+func (s *Syncer) IssueCheckpointRank(dueOnly bool) (*tlog.Entry, int, error) {
+	now := s.now()
+	entries := s.Store.Entries
+	heads := checkpoint.ChainHeads(entries)
+	log, _ := checkpoint.CoverHeads(entries, heads)
 	if len(log) == 0 {
-		return nil, nil
+		return nil, -1, nil
 	}
 	root := merkle.Root(checkpoint.Hashes(log))
-	for i := range s.Store.Entries {
-		e := &s.Store.Entries[i]
+	for i := range entries {
+		e := &entries[i]
 		if e.Payload.Kind == tlog.KindCheckpoint && e.Payload.Root == root &&
 			e.Payload.Count == int64(len(log)) {
-			return nil, ErrAlreadyCheckpointed
+			return nil, checkpoint.Rank(log, s.pub()), ErrAlreadyCheckpointed
+		}
+	}
+	latest := s.Store.LatestCheckpoint()
+	stale := checkpoint.Staleness(entries, latest, now)
+	maxRank := -1
+	if !dueOnly {
+		maxRank = 0
+	}
+	for r := 2; r > maxRank; r-- {
+		if checkpoint.Due(r, stale) {
+			maxRank = r
+			break
 		}
 	}
 	prevHex := ""
-	if cp := s.Store.LatestCheckpoint(); cp != nil {
-		prevHex = cp.HashHex()
+	if latest != nil {
+		prevHex = latest.HashHex()
 	}
-	cp, err := checkpoint.BuildForAt(log, prevHex, ts, s.Priv, s.Store.Tip(s.pub()))
+	cp, rank, err := checkpoint.BuildAt(entries, prevHex, now, maxRank, s.Priv, s.Store.Tip(s.pub()))
 	if err != nil || cp == nil {
-		return nil, err
+		return nil, rank, err
 	}
 	if !s.Store.AppendEntry(cp) {
-		return nil, s.Store.Save()
+		return nil, rank, s.Store.Save()
 	}
 	if _, err := s.PublishPending(); err != nil {
-		return nil, err
+		return nil, rank, err
 	}
-	return cp, s.Store.Save()
+	return cp, rank, s.Store.Save()
 }
 
 // MaybeCoSign: sign half-signed checkpoints we're on the committee for.
@@ -324,13 +385,15 @@ func (s *Syncer) Serve() {
 			}
 			s.lastHB = time.Now()
 		}
-		if time.Since(s.lastCP) >= checkpoint.Interval {
-			if cp, err := s.IssueCheckpoint(); err != nil {
+		if time.Since(s.lastCP) >= CPCheckEvery {
+			if cp, rank, err := s.IssueCheckpointRank(true); err != nil {
 				if !errors.Is(err, ErrAlreadyCheckpointed) {
 					log.Printf("checkpoint: %v", err)
 				}
+			} else if cp != nil && rank > 0 {
+				log.Printf("issued checkpoint %s as fallback (rank %d): leader overdue", cp.HashHex()[:8], rank)
 			} else if cp != nil {
-				log.Printf("issued checkpoint (committee duty fulfilled)")
+				log.Printf("issued checkpoint %s (committee leader)", cp.HashHex()[:8])
 			} else {
 				s.MaybeCoSign()
 			}
