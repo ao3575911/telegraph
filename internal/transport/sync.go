@@ -63,25 +63,41 @@ func (s *Syncer) now() int64 {
 }
 
 // PublishPending frames every entry not yet seen on the wire and fans it
-// out through every bot x channel. Redundant on purpose.
+// out through every bot x channel. Redundant on purpose. An entry is
+// marked seen only when every one of its frames reached at least one
+// channel; otherwise it stays pending and publishing stops for this round
+// (a 429 or an outage would fail the rest too), to be retried by the next
+// call. Before v0.3.0 a failed send still marked the entry seen, so it
+// never reached the network.
 func (s *Syncer) PublishPending() (int, error) {
 	pending := s.Store.Pending()
 	if len(pending) == 0 {
 		return 0, nil
 	}
 	sent := 0
+	var failed error
 	for _, e := range pending {
 		enc, err := e.Encode()
 		if err != nil {
 			return sent, err
 		}
 		for _, fr := range SplitFrames(e.HashHex(), enc) {
+			delivered := false
 			for _, bot := range s.Bots {
 				for _, ch := range s.Channels {
 					if err := bot.Send(ch, fr); err != nil {
 						s.logf("publish %s -> %s: %v", e.HashHex()[:8], ch, err)
+						failed = err
+					} else {
+						delivered = true
 					}
 				}
+			}
+			if !delivered {
+				if err := s.Store.Save(); err != nil {
+					return sent, err
+				}
+				return sent, fmt.Errorf("publish %s: not delivered, will retry: %w", e.HashHex()[:8], failed)
 			}
 		}
 		s.Store.MarkSeen(e.HashHex())
@@ -91,7 +107,9 @@ func (s *Syncer) PublishPending() (int, error) {
 }
 
 // IngestText processes one text blob. Returns true when a verified
-// entry was merged (or staged during bootstrap).
+// entry was merged (or staged during bootstrap). It does not save: a
+// full data.json rewrite per entry made catching up on n entries cost
+// O(n^2) disk writes. PollWindow saves once per batch of updates.
 func (s *Syncer) IngestText(text string) (bool, error) {
 	if !IsFrame(text) {
 		return false, nil
@@ -116,7 +134,7 @@ func (s *Syncer) IngestText(text string) (bool, error) {
 	}
 	if merged := s.Store.AppendReceived(e); merged {
 		s.MaybeCoSign()
-		return true, s.Store.Save()
+		return true, nil // PollWindow saves once per batch
 	}
 	return false, nil
 }
@@ -254,8 +272,12 @@ func (s *Syncer) PollWindow(winSec int) (int, error) {
 					merged++
 				}
 			}
+			if len(ups) > 0 { // idle polls change nothing: skip the rewrite
+				if err := s.Store.Save(); err != nil {
+					s.logf("save: %v", err)
+				}
+			}
 		}
-		s.Store.Save()
 		if nowSec() >= deadline {
 			return merged, nil
 		}
@@ -436,6 +458,11 @@ func (s *Syncer) Serve() {
 		log.Printf("publish: %v", err)
 	}
 	for {
+		if len(s.Store.Pending()) > 0 { // retry entries a failed send left behind
+			if _, err := s.PublishPending(); err != nil {
+				log.Printf("publish: %v", err)
+			}
+		}
 		if n, err := s.PollWindow(25); err != nil {
 			log.Printf("poll window: %v", err)
 		} else if n > 0 {
