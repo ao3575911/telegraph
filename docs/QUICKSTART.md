@@ -21,11 +21,14 @@ export TELEGRAPH_BUS="$TG/bus.jsonl"                  # local bus instead of Tel
 alice() { TELEGRAPH_HOME="$TG/alice" telegraph "$@"; } # one home directory per node
 bob()   { TELEGRAPH_HOME="$TG/bob"   telegraph "$@"; }
 carol() { TELEGRAPH_HOME="$TG/carol" telegraph "$@"; }
-gossip() { for n in alice bob carol alice bob carol; do $n sync --secs 0 >/dev/null; done; }
+gossip() { for n in alice bob carol alice bob carol; do $n sync --secs 0 --genesis >/dev/null; done; }
 alice init && bob init && carol init                  # create keys and local state
 ```
 
 ## Register and sync
+
+The demo nodes start a brand-new network, so they sync with `--genesis`
+until the first checkpoint, which each of them then pins.
 
 ```sh
 alice register --handle alice@nym --did did:key:alice  # claim a handle
@@ -72,10 +75,15 @@ carol resolve alice@nym         # owner is now bob's key
 ```sh
 export TELEGRAPH_BOTS=<token> TELEGRAPH_CHANNELS=@yourchannel  # replaces TELEGRAPH_BUS
 telegraph sync --serve --genesis # first node of a new network: no pin exists yet
+telegraph pin                    # after the first checkpoint: share this hash out of band
+telegraph init && telegraph sync --pin <hash>   # a new node bootstraps from it, then registers
 telegraph sync --serve           # gossip, heartbeat, checkpoint, answer /dump and DMs
-telegraph pin                    # share this hash out of band
-telegraph init && telegraph sync --pin <hash>   # a new node bootstraps from it
 ```
+
+`sync` always checks the log against the pin first and refuses to merge
+gossip without one. `--genesis` is only for a network with no checkpoint
+yet: it is refused once the node sees a checkpoint it is not on the
+committee of, and a node on the first committee pins it automatically.
 
 CI tests the Telegram client against a fake Bot API, not a live bot.
 
@@ -101,8 +109,9 @@ From the CLI, the handle is owned by your own key:
 
 ```sh
 telegraph init
+telegraph sync --pin <hash>   # join first: bootstrap against the network's pin
 telegraph register --handle adz@nym --did did:key:adz
-telegraph sync            # publish it (needs TELEGRAPH_BOTS and TELEGRAPH_CHANNELS)
+telegraph sync                # publish it (needs TELEGRAPH_BOTS and TELEGRAPH_CHANNELS)
 ```
 
 Until you `sync`, it is only in your local log.

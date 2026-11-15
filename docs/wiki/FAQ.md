@@ -15,12 +15,16 @@ reject mismatches, forks and gaps.
 
 **How does a new node know which history is real?**
 It is given a checkpoint hash (a pin) out of band and accepts a peer's dump
-only if it contains that checkpoint.
+only if it contains that checkpoint. The check is mandatory: `sync`
+refuses to merge gossip until the local log verifies against a pin, even
+if you registered a handle first.
 
 **How do I start a brand-new network?**
 There is no pin until the first checkpoint, so the first nodes run
-`telegraph sync --genesis`. After the first checkpoint, `telegraph pin`
-prints the pin to share.
+`telegraph sync --genesis`. Nodes on the first checkpoint's committee pin
+it automatically; `telegraph pin` prints the pin to share. A node that
+sees a checkpoint it is not on the committee of refuses `--genesis` and
+needs the pin.
 
 **What if the checkpoint leader goes offline?**
 The second committee member issues after the leader is an hour overdue,

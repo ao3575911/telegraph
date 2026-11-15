@@ -85,21 +85,35 @@ with `TELEGRAPH_BUS` set.
 Create one or more bots with [@BotFather](https://t.me/BotFather), add them
 to one or more channels, then on each node:
 
+**Join an existing network** (e.g. @tgraph_net). Get its pin, the
+hash of a checkpoint, from an operator out of band (a node's `/pin`, or
+`telegraph pin` on a node you trust), then:
+
+```sh
+telegraph init
+export TELEGRAPH_BOTS=<token>[,<token>…] TELEGRAPH_CHANNELS=@chan1[,@chan2…]
+telegraph sync --pin <checkpoint-hash>   # 1. bootstrap: verify peers' history against the pin
+telegraph register --handle you@nym --did did:key:z6Mk…
+telegraph sync                           # 2. publish; later syncs re-check the pin
+telegraph sync --serve                   # stay up: gossip, heartbeat, checkpoint, answer /dump
+```
+
+The pin check is mandatory: `sync` refuses to merge gossip until the log
+has been verified against a pin (registering first is fine; the node then
+bootstraps around its own entries). `--insecure-skip-pin` turns the check
+off, with a warning on every run; never use it on a live network.
+
+**Start a new network** (no checkpoint exists yet, so no pin):
+
 ```sh
 telegraph init
 telegraph register --handle you@nym --did did:key:z6Mk…
-export TELEGRAPH_BOTS=<token>[,<token>…] TELEGRAPH_CHANNELS=@chan1[,@chan2…]
-telegraph sync --genesis    # first nodes of a new network (no checkpoint yet)
-telegraph sync              # publish pending entries, merge for --secs (default 5)
-telegraph sync --serve      # stay up: gossip, heartbeat, checkpoint, answer /dump
-telegraph pin               # print the trust root to share out of band
+telegraph sync --genesis    # first nodes only; refused once the network has a checkpoint you did not sign
+telegraph pin               # after the first checkpoint: the pin to share out of band
 ```
 
-A new node bootstraps from peers that are serving:
-
-```sh
-telegraph init && telegraph sync --pin <checkpoint-hash>
-```
+A `--genesis` node pins the first checkpoint whose committee it is on and
+from then on runs the normal check.
 
 A serving node also runs its bot for people, with every command in
 Telegram's command menu and rate-limited:
@@ -148,7 +162,7 @@ settings and hosts without systemd:
 | `register --handle H --did D` · `revoke --handle H` | claim or revoke a handle |
 | `resolve H` · `verify H` | resolve a handle; `verify` adds checkpoint attestation |
 | `audit` | verify signatures, chains and the latest checkpoint |
-| `sync [--serve] [--secs N] [--pin P \| --genesis] [--bot-register]` | publish and merge gossip; `--genesis` starts or joins a network with no checkpoint yet; `--bot-register` turns on the bot's `/register` |
+| `sync [--serve] [--secs N] [--pin P \| --genesis] [--bot-register]` | publish and merge gossip after the mandatory pin check; `--pin` joins (bootstraps) a network, `--genesis` starts one with no checkpoint yet; `--bot-register` turns on the bot's `/register` |
 | `checkpoint` | issue a checkpoint if this node leads the committee, or as a fallback when the leader is overdue |
 | `pin [--rotate]` · `peers` · `net` | trust root, peers, network health |
 | `card --handle H` · `attest --line L` · `scan L` | bio cards |

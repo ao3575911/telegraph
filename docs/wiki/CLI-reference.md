@@ -12,7 +12,7 @@ telegraph <command> [flags]
 | `resolve H` | | Handle → DID, owner and state; exits 1 if unregistered or revoked |
 | `verify H` | | `resolve` plus checkpoint attestation |
 | `audit` | | Check signatures, chains and the latest checkpoint |
-| `sync` | `--secs N` (5), `--serve`, `--pin P`, `--genesis`, `--bots`, `--channels`, `--bus`, `--checkpoint-only`, `--bot-register` | Publish pending entries and merge gossip; `--genesis` starts or joins a network with no checkpoint yet; `--bot-register` lets Telegram users `/register` handles signed by this node |
+| `sync` | `--secs N` (5), `--serve`, `--pin P`, `--genesis`, `--insecure-skip-pin`, `--bots`, `--channels`, `--bus`, `--checkpoint-only`, `--bot-register` | Publish pending entries and merge gossip, after the mandatory pin check; `--pin` joins a network (bootstraps), `--genesis` starts one with no checkpoint yet; `--insecure-skip-pin` skips the check with a warning; `--bot-register` lets Telegram users `/register` handles signed by this node |
 | `checkpoint` | | Issue a checkpoint if this node leads the committee, or as fallback #1/#2 when the leader is overdue |
 | `pin` | `--rotate` | Show the trust root, or advance it |
 | `peers` | | Known peers and liveness |

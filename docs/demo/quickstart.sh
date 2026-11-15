@@ -7,7 +7,7 @@ export TELEGRAPH_BUS="$TG/bus.jsonl"
 alice() { TELEGRAPH_HOME="$TG/alice" telegraph "$@"; }
 bob()   { TELEGRAPH_HOME="$TG/bob"   telegraph "$@"; }
 carol() { TELEGRAPH_HOME="$TG/carol" telegraph "$@"; }
-gossip() { for n in alice bob carol alice bob carol; do $n sync --secs 0 >/dev/null; done; }
+gossip() { for n in alice bob carol alice bob carol; do $n sync --secs 0 --genesis >/dev/null; done; }
 
 alice init && bob init && carol init
 alice register --handle alice@nym --did did:key:alice
