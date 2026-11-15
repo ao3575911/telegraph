@@ -45,7 +45,7 @@ telegraph version
 a while on the Go module proxy):
 
 ```sh
-go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.2
+go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.3
 ```
 
 **From source:**

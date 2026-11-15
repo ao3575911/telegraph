@@ -7,7 +7,7 @@ Telegram. Every command below is run by CI (`docs/demo/quickstart.sh`).
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh  # no Go needed
-# or: go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.2
+# or: go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.3
 telegraph version
 ```
 
