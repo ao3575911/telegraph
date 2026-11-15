@@ -6,6 +6,28 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-15
+
+### Added
+
+- `/register name [did]` in a private chat with the bot: the node signs
+  `name@nym` and gossips it to the channel. Registration is custodial (the
+  node's key owns the handle) and off unless the node runs with
+  `--bot-register` or `TELEGRAPH_BOT_REGISTER=1`. Without a DID the handle
+  gets `did:tg:<telegram user id>`, which is public. Without a name the bot
+  asks for one.
+- `/revoke name`: revoke a handle you registered through the bot.
+- The node records which Telegram user each bot-registered handle belongs
+  to (`custody` in `data.json`, never gossiped); only that user can change
+  its DID or revoke it. Handles owned by other keys, by the node operator or
+  by another Telegram user are refused, as are groups. Three handles per
+  Telegram user per node.
+
+### Changed
+
+- `telegraph register` and the bot share one handle rule (one `@`, no
+  spaces, at most 64 characters); the CLI now rejects handles that break it.
+
 ## [0.2.1] - 2026-11-15
 
 ### Fixed

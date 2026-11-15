@@ -16,7 +16,7 @@ import (
 
 // Version is the release version, overridable at build time with
 // -ldflags "-X main.Version=...".
-var Version = "0.2.1"
+var Version = "0.2.2"
 
 const tagline = "decentralised handle registry gossiped over Telegram"
 
