@@ -14,7 +14,6 @@ alice register --handle alice@nym --did did:key:alice
 bob   register --handle bob@nym   --did did:key:bob
 carol register --handle carol@nym --did did:key:carol
 gossip
-sleep 1
 alice checkpoint; bob checkpoint; carol checkpoint
 gossip
 carol verify alice@nym

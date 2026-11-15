@@ -53,7 +53,6 @@ alice register --handle alice@nym --did did:key:alice
 bob   register --handle bob@nym   --did did:key:bob
 carol register --handle carol@nym --did did:key:carol
 sync-all                  # each node publishes and merges
-sleep 1                   # checkpoints cover entries from earlier seconds
 checkpoint-all            # the committee leader issues, the others co-sign
 sync-all
 carol verify alice@nym    # ✓ ATTESTED by checkpoint …
@@ -72,6 +71,7 @@ to one or more channels, then on each node:
 telegraph init
 telegraph register --handle you@nym --did did:key:z6Mk…
 export TELEGRAPH_BOTS=<token>[,<token>…] TELEGRAPH_CHANNELS=@chan1[,@chan2…]
+telegraph sync --genesis    # first nodes of a new network (no checkpoint yet)
 telegraph sync              # publish pending entries, merge for --secs (default 5)
 telegraph sync --serve      # stay up: gossip, heartbeat, checkpoint, answer /dump
 telegraph pin               # print the trust root to share out of band
@@ -83,8 +83,14 @@ A new node bootstraps from peers that are serving:
 telegraph init && telegraph sync --pin <checkpoint-hash>
 ```
 
-The Telegram transport is the Bot API (`getUpdates`, `sendMessage`); it is
-not exercised by the test suite, which uses the file bus.
+A serving node also answers direct messages to its bot: `/start` (what
+Telegraph is, install and join commands), `/help` (quickstart),
+`/resolve handle@nym`, `/pin` and `/status`. Replies are read-only,
+rate-limited per chat, and DM text never enters the gossip log.
+
+The Telegram transport is the Bot API (`getUpdates`, `sendMessage`). The
+test suite exercises it against a fake Bot API server; multi-node tests and
+demos use the file bus.
 
 ## Commands
 
@@ -94,8 +100,8 @@ not exercised by the test suite, which uses the file bus.
 | `register --handle H --did D` · `revoke --handle H` | claim or revoke a handle |
 | `resolve H` · `verify H` | resolve a handle; `verify` adds checkpoint attestation |
 | `audit` | verify signatures, chains and the latest checkpoint |
-| `sync [--serve] [--secs N] [--pin P]` | publish and merge gossip |
-| `checkpoint` | issue a checkpoint if this node leads the committee |
+| `sync [--serve] [--secs N] [--pin P \| --genesis]` | publish and merge gossip; `--genesis` starts or joins a network with no checkpoint yet |
+| `checkpoint` | issue a checkpoint if this node leads the committee, or as a fallback when the leader is overdue |
 | `pin [--rotate]` · `peers` · `net` | trust root, peers, network health |
 | `card --handle H` · `attest --line L` · `scan L` | bio cards |
 | `swap offer\|accept\|claim\|reclaim\|status` | atomic handle swap |
@@ -114,7 +120,7 @@ vhs docs/demo/main.tape               # re-record a demo (charmbracelet/vhs)
 
 ## Status
 
-Pre-1.0 (0.1.0). The protocol and on-disk format may change. Known limits
+Pre-1.0 (0.2.0). The protocol and on-disk format may change. Known limits
 are listed in the [usage report](docs/USAGE-REPORT.md#open-issues).
 
 ## Licence

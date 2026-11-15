@@ -36,7 +36,6 @@ gossip                                                 # publish and merge
 ## Checkpoint and verify
 
 ```sh
-sleep 1                                     # checkpoints cover earlier seconds
 alice checkpoint; bob checkpoint; carol checkpoint  # leader issues, others co-sign
 gossip
 carol verify alice@nym                      # ✓ ATTESTED by checkpoint …
@@ -71,9 +70,10 @@ carol resolve alice@nym         # owner is now bob's key
 
 ```sh
 export TELEGRAPH_BOTS=<token> TELEGRAPH_CHANNELS=@yourchannel  # replaces TELEGRAPH_BUS
-telegraph sync --serve           # gossip, heartbeat, checkpoint, answer /dump
+telegraph sync --serve --genesis # first node of a new network: no pin exists yet
+telegraph sync --serve           # gossip, heartbeat, checkpoint, answer /dump and DMs
 telegraph pin                    # share this hash out of band
 telegraph init && telegraph sync --pin <hash>   # a new node bootstraps from it
 ```
 
-The Telegram transport is not exercised by CI.
+CI tests the Telegram client against a fake Bot API, not a live bot.

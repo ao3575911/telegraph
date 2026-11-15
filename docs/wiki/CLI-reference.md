@@ -12,8 +12,8 @@ telegraph <command> [flags]
 | `resolve H` | | Handle → DID, owner and state |
 | `verify H` | | `resolve` plus checkpoint attestation |
 | `audit` | | Check signatures, chains and the latest checkpoint |
-| `sync` | `--secs N` (5), `--serve`, `--pin P`, `--bots`, `--channels`, `--bus`, `--checkpoint-only` | Publish pending entries and merge gossip |
-| `checkpoint` | | Issue a checkpoint if this node leads the committee |
+| `sync` | `--secs N` (5), `--serve`, `--pin P`, `--genesis`, `--bots`, `--channels`, `--bus`, `--checkpoint-only` | Publish pending entries and merge gossip; `--genesis` starts or joins a network with no checkpoint yet |
+| `checkpoint` | | Issue a checkpoint if this node leads the committee, or as fallback #1/#2 when the leader is overdue |
 | `pin` | `--rotate` | Show the trust root, or advance it |
 | `peers` | | Known peers and liveness |
 | `net` | | Network health |
@@ -38,6 +38,20 @@ telegraph <command> [flags]
 | `TELEGRAPH_BUS` | Local file bus path, used instead of Telegram |
 | `NO_COLOR` | Disable colour |
 | `CLICOLOR_FORCE` | Force colour when stdout is not a terminal |
+
+## Bot commands
+
+A node running `sync --serve` over Telegram answers direct messages:
+
+| Message | Reply |
+|---|---|
+| `/start` | What Telegraph is, install and join commands with the pin, links |
+| `/help` | Quickstart commands |
+| `/resolve handle@nym` | Owner, DID, status and checkpoint attestation |
+| `/pin` | The node's trust pin |
+| `/status` | Entries, latest checkpoint and committee signatures |
+
+Anything else gets a short hint. Replies are limited to 5 per chat per 30 s.
 
 Exit status is 0 on success and 1 on any error; errors print as
 `✗ telegraph: …` on stderr.

@@ -6,6 +6,42 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
+### Added
+
+- Bot replies to direct messages on serving nodes: `/start` (what Telegraph
+  is, install, join with the pin, links), `/help` (quickstart),
+  `/resolve handle@nym` (owner, DID, status, attestation), `/pin` and
+  `/status`. HTML replies with escaped input, rate-limited per chat; DM text
+  never enters the gossip log.
+- `sync --genesis` to start or join a network that has no checkpoint yet
+  ([#2](https://github.com/ao3575911/telegraph/issues/2)).
+- Fallback checkpoint issuers: the second and third committee members issue
+  when the leader is 1 h or 2 h overdue
+  ([#3](https://github.com/ao3575911/telegraph/issues/3)). Serving nodes
+  check every 10 minutes.
+- Tests for the Telegram client against a fake Bot API (`httptest`).
+- `audit` reports late-delivered entries and covered entries not yet
+  received.
+
+### Changed
+
+- Checkpoints name the head of every issuer chain they cover (`Heads`) and
+  cover those chains instead of a timestamp cut. An entry delivered to the
+  issuer after the checkpoint is now uncovered instead of breaking its root
+  ([#1](https://github.com/ao3575911/telegraph/issues/1)). 0.1.0
+  checkpoints keep the timestamp rule.
+- A serving leader issues once the oldest uncheckpointed entry is
+  `Interval` (6 h) old, rather than every 6 h of uptime.
+- Direct messages are no longer parsed as gossip frames.
+
+### Compatibility
+
+- 0.1.0 nodes reject checkpoints issued by 0.2.0 nodes (unknown `Heads`
+  field). Upgrade every node in a network together. Stored 0.1.0 data and
+  checkpoints remain valid.
+
 ## [0.1.0] - 2026-11-15
 
 ### Added
@@ -45,5 +81,6 @@ uses [Semantic Versioning](https://semver.org/).
 - Merge order changed the merged entry order.
 - Auditor panics on short ids in hostile input.
 
-[Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ao3575911/telegraph/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ao3575911/telegraph/releases/tag/v0.1.0
