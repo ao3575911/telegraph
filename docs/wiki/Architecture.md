@@ -53,7 +53,10 @@ before the checkpoint) rather than breaking the root. Checkpoints without
 - **Committee.** The target is `sha256("telegraph/cp/<root>/<count>")`. The
   three issuer keys closest to the target by symmetric ring distance form
   the committee, so it rotates with the log and cannot be chosen by any one
-  issuer.
+  issuer. Issuers are the keys that signed a log entry and, when
+  `TELEGRAPH_COMMITTEE` is set (it should be, identically on every node),
+  are on that allowlist. A checkpoint naming or signed by an unlisted key
+  verifies as `ErrOffCommittee`: kept for chain continuity, never attests.
 - **Quorum.** The closest member (the leader) issues; the others co-sign
   when they sync. If the leader is offline, the second member issues once
   the oldest uncheckpointed entry is `Interval` (6 h) + 1 h old, and the

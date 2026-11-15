@@ -158,7 +158,7 @@ func (s *Store) AppendEntry(e *tlog.Entry) bool {
 	if s.find(e.Hash) >= 0 {
 		return s.mergeCosigs(e)
 	}
-	if err := e.Verify(); err != nil && !tlog.IsPendingQuorum(err) {
+	if err := e.Verify(); err != nil && !tlog.Unattested(err) {
 		return false // never admit an unverifiable entry
 	}
 	s.Entries = append(s.Entries, *e)

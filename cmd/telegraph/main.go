@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ao3575911/telegraph/internal/store"
+	"github.com/ao3575911/telegraph/internal/tlog"
 	"github.com/ao3575911/telegraph/internal/ui"
 )
 
@@ -33,6 +34,9 @@ func main() {
 	dir := envOr("TELEGRAPH_HOME", defaultHome())
 	args := os.Args[2:]
 	setupLogging()
+	comm, err := committeeKeys()
+	dieOn(err)
+	tlog.SetCommittee(comm)
 
 	switch os.Args[1] {
 	case "help", "-h", "--help":
@@ -122,7 +126,7 @@ func usage(p *ui.Printer) {
 	}
 	p.Table("  ", rows)
 	p.Printf("\n%s TELEGRAPH_HOME TELEGRAPH_BOTS[_FILE] TELEGRAPH_CHANNELS TELEGRAPH_CHANNEL_URL\n"+
-		"     TELEGRAPH_PEERS TELEGRAPH_BOT_REGISTER TELEGRAPH_REGISTER_BOT TELEGRAPH_LOG_FORMAT TELEGRAPH_PIN\n"+
+		"     TELEGRAPH_PEERS TELEGRAPH_COMMITTEE TELEGRAPH_BOT_REGISTER TELEGRAPH_REGISTER_BOT TELEGRAPH_LOG_FORMAT TELEGRAPH_PIN\n"+
 		"     TELEGRAPH_BUS NO_COLOR\n"+
 		"     (docs/NODE-OPERATIONS.md)\n", p.Bold("env:"))
 }

@@ -105,10 +105,13 @@ func InCommittee(comm [][]byte, pub []byte) bool {
 	return false
 }
 
+// Issuers returns, sorted, the keys eligible for a committee over es:
+// signers of at least one log entry (not a checkpoint or heartbeat) and,
+// when TELEGRAPH_COMMITTEE is set, on that allowlist.
 func Issuers(es []tlog.Entry) [][]byte {
 	set := map[string][]byte{}
 	for i := range es {
-		if IsCP(es[i]) || es[i].Payload.Kind == tlog.KindHeartbeat {
+		if IsCP(es[i]) || es[i].Payload.Kind == tlog.KindHeartbeat || !tlog.CommitteeAllows(es[i].PubKey) {
 			continue
 		}
 		set[hex.EncodeToString(es[i].PubKey)] = es[i].PubKey

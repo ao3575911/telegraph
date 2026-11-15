@@ -11,6 +11,7 @@ import (
 
 	"github.com/ao3575911/telegraph/internal/checkpoint"
 	"github.com/ao3575911/telegraph/internal/merkle"
+	"github.com/ao3575911/telegraph/internal/tlog"
 	"github.com/ao3575911/telegraph/internal/transport"
 )
 
@@ -26,6 +27,8 @@ import (
 //	TELEGRAPH_CHANNELS     gossip channel id(s) or @username(s)
 //	TELEGRAPH_CHANNEL_URL  public channel link for bot buttons
 //	TELEGRAPH_PEERS        hex public keys of the other committee nodes
+//	TELEGRAPH_COMMITTEE    hex public keys allowed on a checkpoint committee,
+//	                       identical on every node (unset: any issuer; unsafe)
 //	TELEGRAPH_NODE_NAME    label for logs
 //	TELEGRAPH_BOT_REGISTER 1: let Telegram users /register (custodial)
 //	TELEGRAPH_REGISTER_BOT on a node without bot registration, the bot
@@ -81,16 +84,31 @@ func registerBot(v string) (string, error) {
 }
 
 // peerKeys parses TELEGRAPH_PEERS: hex ed25519 public keys.
-func peerKeys() ([][]byte, error) {
+func peerKeys() ([][]byte, error) { return hexKeys("TELEGRAPH_PEERS") }
+
+// hexKeys parses a comma-separated list of 64-hex ed25519 public keys
+// from env var name, dropping duplicates.
+func hexKeys(name string) ([][]byte, error) {
 	var out [][]byte
-	for _, p := range splitCSV(os.Getenv("TELEGRAPH_PEERS")) {
+	seen := map[string]bool{}
+	for _, p := range splitCSV(os.Getenv(name)) {
 		b, err := hex.DecodeString(p)
 		if err != nil || len(b) != 32 {
-			return nil, fmt.Errorf("TELEGRAPH_PEERS: %q is not a 64-hex public key", short(p))
+			return nil, fmt.Errorf("%s: %q is not a 64-hex public key", name, short(p))
 		}
-		out = append(out, b)
+		if !seen[string(b)] {
+			seen[string(b)] = true
+			out = append(out, b)
+		}
 	}
 	return out, nil
+}
+
+// committeeKeys parses TELEGRAPH_COMMITTEE: the hex ed25519 public keys
+// allowed on a checkpoint committee (see tlog.SetCommittee). Empty means
+// no allowlist.
+func committeeKeys() ([][]byte, error) {
+	return hexKeys("TELEGRAPH_COMMITTEE")
 }
 
 // setupLogging installs a slog handler as the default logger, so the
@@ -159,6 +177,7 @@ func doConfig(dir string, args []string) {
 		{"channels", envOr("TELEGRAPH_CHANNELS", "-")},
 		{"channel url", cu},
 		{"peers", ps},
+		{"committee", committeeSummary()},
 		{"bot register", fmt.Sprint(os.Getenv("TELEGRAPH_BOT_REGISTER") == "1")},
 		{"register bot", rb},
 		{"log", envOr("TELEGRAPH_LOG_FORMAT", "text") + "/" + envOr("TELEGRAPH_LOG_LEVEL", "info")},
@@ -182,9 +201,15 @@ func doCommittee(dir string) {
 	}
 	out.KV([][2]string{
 		{"this node", fmt.Sprintf("%x", me)},
+		{"allowlist", committeeSummary()},
 		{"issuers", fmt.Sprint(len(issuers))},
 		{"entries", fmt.Sprint(len(log))},
 	})
+	if !tlog.CommitteeSet() {
+		out.Warn("no TELEGRAPH_COMMITTEE: any key that writes an entry can join the committee")
+	} else if !tlog.CommitteeAllows(me) {
+		out.Info("this node is not on the TELEGRAPH_COMMITTEE allowlist: it never signs checkpoints")
+	}
 	if len(log) == 0 {
 		out.Info("empty log: no committee yet")
 		return
@@ -208,7 +233,7 @@ func doCommittee(dir string) {
 			checkpoint.PeerStatus(st, hex.EncodeToString(c), now)})
 	}
 	out.Table("  ", rows)
-	if !isIssuer {
+	if !isIssuer && tlog.CommitteeAllows(me) {
 		out.Warn("this node has signed no register yet, so it cannot be on a committee: " +
 			"run `telegraph register --handle <name>@nym --did <did>` and sync")
 	}
@@ -217,6 +242,18 @@ func doCommittee(dir string) {
 			out.Warn("peer %s is not an issuer yet (no register seen from it)", short(hex.EncodeToString(p)))
 		}
 	}
+}
+
+// committeeSummary describes the committee allowlist for config output.
+func committeeSummary() string {
+	ks, err := committeeKeys()
+	switch {
+	case err != nil:
+		return "error: " + err.Error()
+	case len(ks) == 0:
+		return "open: any issuer (set TELEGRAPH_COMMITTEE)"
+	}
+	return fmt.Sprintf("allowlist of %d keys", len(ks))
 }
 
 func containsKey(ks [][]byte, k []byte) bool {
