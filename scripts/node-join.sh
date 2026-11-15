@@ -13,6 +13,8 @@
 #   6. installs the restart-on-failure service (scripts/install-service.sh).
 #
 # Example: sh scripts/node-join.sh node2 c700daaa…0080 node2 did:web:example.com
+# The binary is TELEGRAPH_BIN from NODE.env if set, else telegraph on PATH,
+# else ~/go/bin/telegraph (the same order as telegraph-supervise.sh).
 # Safe to re-run: finished steps are skipped. Docs: docs/NODE-OPERATIONS.md
 set -eu
 
@@ -23,8 +25,6 @@ case $name in *@*) handle=$name ;; *) handle="$name@nym" ;; esac
 did=${4:-did:web:$name.invalid}
 here=$(cd "$(dirname "$0")" && pwd)
 envfile="${XDG_CONFIG_HOME:-$HOME/.config}/telegraph/$node.env"
-bin=$(command -v telegraph || echo "$HOME/go/bin/telegraph")
-[ -x "$bin" ] || { echo "telegraph not found: go install github.com/ao3575911/telegraph/cmd/telegraph@latest" >&2; exit 1; }
 case $pin in *[!0-9a-f]*) echo "PIN must be the 64-hex checkpoint hash" >&2; exit 2 ;; esac
 [ ${#pin} -eq 64 ] || { echo "PIN must be the 64-hex checkpoint hash" >&2; exit 2; }
 
@@ -37,6 +37,8 @@ set -a
 . "$envfile"
 set +a
 export GODEBUG="${GODEBUG:-http2client=0}"
+bin=${TELEGRAPH_BIN:-$(command -v telegraph || echo "$HOME/go/bin/telegraph")}
+[ -x "$bin" ] || { echo "telegraph not found at $bin: set TELEGRAPH_BIN in $envfile or go install github.com/ao3575911/telegraph/cmd/telegraph@latest" >&2; exit 1; }
 [ -n "${TELEGRAPH_BOTS:-}${TELEGRAPH_BOTS_FILE:-}" ] || { echo "add the bot token to $envfile first" >&2; exit 1; }
 
 "$bin" init >/dev/null
