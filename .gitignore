@@ -1,0 +1,21 @@
+# binaries
+/telegraph
+/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# local node state (keys, logs, preimages) — never commit
+.telegraph/
+identity.key
+data.json
+preimages/
+*.offset
+bus.jsonl
+
+# editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
