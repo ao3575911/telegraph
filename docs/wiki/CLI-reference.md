@@ -49,10 +49,10 @@ messages, and in groups when a command is addressed to it
 | Command | Reply |
 |---|---|
 | `/resolve handle@nym` | Owner, DID, status and checkpoint attestation (without a handle, it asks for one) |
-| `/register name [did]` | Register `name@nym`, signed by the node (custodial, DM only, node needs `--bot-register`) |
+| `/register name [did]` | Register `name@nym`, signed by the node (custodial, DM only, node needs `--bot-register`). A first registration also shows your handle number and a badge if you are in the first 1000 |
 | `/revoke name` | Revoke a handle you registered through the bot |
 | `/status` | Entries, handles, latest checkpoint and committee signatures |
-| `/stats` | Network counts and early-adopter spots left |
+| `/stats` | Network counts (active, revoked and ever-registered handles, registrars, nodes online, swaps, checkpoints) and how many Founding 100 / Early adopter spots are left |
 | `/pin` | The network's trust pin |
 | `/about` | What Telegraph is and how it works |
 | `/version` | Node software version |

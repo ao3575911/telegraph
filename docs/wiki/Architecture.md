@@ -17,8 +17,11 @@ order.
 The registry is a CRDT. Merging is a union of entries de-duplicated by hash
 and applied in hash order, so merge is commutative, associative and
 idempotent. Plain register and revoke entries resolve last-writer-wins.
-The store persists entries in `TELEGRAPH_HOME/data.json` and tracks which
-local entries still need publishing.
+The store persists entries in `TELEGRAPH_HOME/data.json` (written through a
+temporary file, fsync and rename) and tracks which local entries still need
+publishing. The JSON document is the practical cap: a node runs out of
+memory saving around 2M entries. See the
+[stress report](https://github.com/ao3575911/telegraph/blob/main/docs/STRESS-REPORT.md).
 
 ## Checkpoints (`internal/checkpoint`)
 
@@ -69,11 +72,14 @@ Entries are framed into messages and posted to every configured channel;
 nodes poll, ingest, co-sign pending checkpoints and send heartbeats.
 `sync --serve` also answers `/dump` requests so new nodes can bootstrap,
 and replies to people (`/resolve`, `/register`, `/revoke`, `/status`,
-`/pin`, `/about`, `/version`, `/help`, `/start`) from the local store; see
+`/stats`, `/pin`, `/about`, `/version`, `/help`, `/start`) from the local store; see
 [TELEGRAM.md](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md). Private-chat text is never parsed as a
 frame; the only entries the bot writes are custodial `/register` and
 `/revoke` entries signed by the node (opt-in, `--bot-register`); replies use HTML with
-escaped input and are rate-limited per chat (5 per 30 s).
+escaped input and are rate-limited per chat (5 per 30 s). Frame reassembly
+is bounded (32,768 parts, 512 unfinished entries, 128 MiB) so crafted
+channel posts cannot crash a node. A failed send leaves the entry pending
+and is retried.
 The file bus (`TELEGRAPH_BUS`) implements the same interface on a local
 append-only file for tests and demos.
 

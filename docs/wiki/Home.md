@@ -15,6 +15,18 @@ that what it sees matches what everyone else sees.
 Register a handle: DM a node's bot `/register adz` (custodial, the node's
 key owns it), or with your own key run `telegraph init`, then
 `telegraph register --handle adz@nym --did did:key:adz` and `telegraph sync`.
+`/revoke adz` drops a handle you registered through the bot. `/stats`
+shows network counts and how many early-adopter spots are left. The first
+100 handles ever registered get "Founding 100"; handles 101–1000 get
+"Early adopter".
+
+Scale and recent fixes are in the
+[stress report](https://github.com/ao3575911/telegraph/blob/main/docs/STRESS-REPORT.md)
+(1k, 100k, 1M and 10M users). Main has the seven bugs found there:
+crafted channel posts can no longer crash a node, a failed send is retried
+instead of being marked published, `data.json` is written crash-safe, and
+ingest and bot lookups stay fast at 100k users. The JSON store still caps
+a node at around 1–2M users.
 
 Install:
 

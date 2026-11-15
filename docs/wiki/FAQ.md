@@ -41,6 +41,24 @@ then `telegraph sync`) your own key owns it. Until
 [#15](https://github.com/ao3575911/telegraph/issues/15) is fixed, any key
 can overwrite a handle with a later register, whichever path you use.
 
+**What are Founding 100 and Early adopter?**
+The first 100 distinct handles ever registered on the network get
+"🏅 Founding 100" on `/register`. Handles 101–1000 get "🎖 Early adopter".
+`/stats` shows how many spots are left. After 1000 there is no badge.
+
+**How large can a network get?**
+A node ingesting 100k handles takes 4.6 s and about 257 MB of RAM; 1M
+works (48 s, 2.8 GB). Around 2M, saving `data.json` runs out of memory.
+One Telegram channel is also limited to about 28,800 messages a day, so
+publishing 100k entries would take days. The
+[stress report](https://github.com/ao3575911/telegraph/blob/main/docs/STRESS-REPORT.md)
+has the numbers and the seven bugs it found, now fixed on main: two
+crafted channel posts could crash every node, a failed send was marked
+published and never retried, a flood of 10,000 new chats reset every rate
+limit, and `data.json` was not crash-safe. Two protocol issues remain:
+[#15](https://github.com/ao3575911/telegraph/issues/15) (any later
+register can take over a handle) and checkpoints that grow with every user.
+
 **How do I install without Go?**
 `curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh`
 downloads the release for your OS, checks its SHA-256 and installs it to
