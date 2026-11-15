@@ -73,3 +73,19 @@ func TestDeterministicTiebreak(t *testing.T) {
 }
 
 var _ = time.Now
+
+// TestMergeKeepsFirstOwner (#15): whatever order replicas merge in, the
+// first register keeps the handle against a later key.
+func TestMergeKeepsFirstOwner(t *testing.T) {
+	first := mk(t, "x@nym", "did:first", 1000)
+	later := mk(t, "x@nym", "did:later", 2000)
+	r1, r2 := New(), New()
+	r1.Apply(later)
+	r2.Apply(first)
+	for _, m := range []*Registry{Merge(r1, r2), Merge(r2, r1), Merge(r1, r2, r1)} {
+		e, _, ok := m.Resolve("x@nym")
+		if !ok || e.Payload.DID != "did:first" {
+			t.Fatalf("resolved %q, want did:first", e.Payload.DID)
+		}
+	}
+}

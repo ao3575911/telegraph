@@ -1,14 +1,19 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ao3575911/telegraph/internal/checkpoint"
@@ -47,6 +52,7 @@ func doRegister(dir string, args []string) {
 	dieOn(tlog.ValidHandle(*handle))
 	priv := mustKey(dir)
 	st := mustStore(dir)
+	dieOn(mayWrite(st, *handle, pubOf(priv), false))
 	nonce := make([]byte, 16)
 	_, _ = rand.Read(nonce)
 	e, err := tlog.New(tlog.Payload{
@@ -70,8 +76,10 @@ func doRevoke(dir string, args []string) {
 	if *handle == "" {
 		die(errors.New("--handle is required"))
 	}
+	dieOn(tlog.ValidHandle(*handle))
 	priv := mustKey(dir)
 	st := mustStore(dir)
+	dieOn(mayWrite(st, *handle, pubOf(priv), true))
 	nonce := make([]byte, 16)
 	_, _ = rand.Read(nonce)
 	e, err := tlog.New(tlog.Payload{
@@ -82,6 +90,24 @@ func doRevoke(dir string, args []string) {
 	appendOwn(st, e)
 	out.OK("revoked %s", out.Bold(*handle))
 	out.KV([][2]string{{"entry", out.Dim(short(e.HashHex()))}})
+}
+
+// mayWrite refuses a register or revoke the network would ignore: the
+// handle is owned by another key, locked in a swap, or (for a revoke)
+// not owned by this key at all. Ownership is first-come (issue #15).
+func mayWrite(st *store.Store, handle string, me []byte, revoke bool) error {
+	o := st.Ownership(handle)
+	owner, free := o.Owner, o.Free
+	switch {
+	case o.Status == handshake.StateLocked:
+		return fmt.Errorf("%s is locked in a swap; try again after it closes", handle)
+	case revoke && (free || !bytes.Equal(owner, me)):
+		return fmt.Errorf("%s is not owned by this key (%s…)", handle, short(fmt.Sprintf("%x", me)))
+	case !revoke && !free && !bytes.Equal(owner, me):
+		return fmt.Errorf("%s is owned by key %s…; only its owner can change it (see `telegraph swap`)",
+			handle, short(fmt.Sprintf("%x", owner)))
+	}
+	return nil
 }
 
 func doResolve(dir, handle string) {
@@ -205,7 +231,7 @@ func doSync(dir string, args []string) {
 	fs := flag.NewFlagSet("sync", flag.ExitOnError)
 	serve := fs.Bool("serve", false, "publish, then poll forever")
 	win := fs.Int("secs", 5, "poll window in seconds")
-	botsStr := fs.String("bots", envOr("TELEGRAPH_BOTS", ""), "comma-separated bot tokens")
+	botsStr := fs.String("bots", "", "comma-separated bot tokens (prefer TELEGRAPH_BOTS: flags show in the process list)")
 	chansStr := fs.String("channels", envOr("TELEGRAPH_CHANNELS", ""), "comma-separated channels")
 	bus := fs.String("bus", envOr("TELEGRAPH_BUS", ""), "local file bus instead of Telegram (testing, demos)")
 	pinStr := fs.String("pin", envOr("TELEGRAPH_PIN", ""), "genesis checkpoint pin (first sync)")
@@ -214,8 +240,13 @@ func doSync(dir string, args []string) {
 	botReg := fs.Bool("bot-register", envOr("TELEGRAPH_BOT_REGISTER", "") == "1",
 		"let Telegram users /register handles, signed by this node's key (custodial)")
 	_ = fs.Parse(args)
+	chURL, err := channelURL()
+	dieOn(err)
+	peers, err := peerKeys()
+	dieOn(err)
 
 	var conns []transport.Conn
+	tokenSrc := ""
 	channels := splitCSV(*chansStr)
 	if *bus != "" {
 		fb, err := transport.OpenFileBus(*bus, filepath.Join(dir, "bus.offset"))
@@ -225,10 +256,16 @@ func doSync(dir string, args []string) {
 			channels = []string{"local"}
 		}
 	} else {
-		tokens := splitCSV(*botsStr)
+		tokens, src := splitCSV(*botsStr), "flag --bots"
 		if len(tokens) == 0 {
-			die(errors.New("no transport: set --bots/TELEGRAPH_BOTS (or --bus/TELEGRAPH_BUS for a local bus)"))
+			var err error
+			tokens, src, err = botTokens()
+			dieOn(err)
 		}
+		if len(tokens) == 0 {
+			die(errNoTokens)
+		}
+		tokenSrc = src
 		if len(channels) == 0 {
 			die(errors.New("no channels: --channels or TELEGRAPH_CHANNELS required"))
 		}
@@ -249,7 +286,7 @@ func doSync(dir string, args []string) {
 	priv := mustKey(dir)
 	sy := transport.NewSyncer(conns, channels, st, priv)
 	if *bus == "" {
-		sy.DM = &transport.Responder{Version: "v" + Version}
+		sy.DM = &transport.Responder{Version: "v" + Version, ChannelURL: chURL}
 		if *botReg {
 			sy.DM.Priv = priv
 		}
@@ -299,8 +336,14 @@ func doSync(dir string, args []string) {
 	}
 	if *serve {
 		out.Info("serving: publish · poll · checkpoint · heartbeat")
+		slog.Info("node starting", "version", Version, "key", short(fmt.Sprintf("%x", pubOf(priv))),
+			"entries", len(st.Entries), "channels", len(channels), "bots", len(conns),
+			"tokens", tokenSrc, "peers", len(peers), "bot_register", *botReg, "channel_url", chURL)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
 		sy.SetupBots()
-		sy.Serve()
+		dieOn(sy.Serve(ctx))
+		slog.Info("node stopped")
 		return
 	}
 	start := time.Now()

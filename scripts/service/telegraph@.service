@@ -1,0 +1,38 @@
+# Telegraph node as a systemd *user* service, one instance per node.
+#
+#   install:  sh scripts/install-service.sh node1
+#   status:   systemctl --user status telegraph@node1
+#   logs:     journalctl --user -u telegraph@node1 -f
+#
+# Settings and the bot token live in ~/.config/telegraph/<instance>.env
+# (mode 0600), never in this file or on the command line.
+# Docs: docs/NODE-OPERATIONS.md
+
+[Unit]
+Description=Telegraph node (%i)
+Documentation=https://github.com/ao3575911/telegraph/blob/main/docs/NODE-OPERATIONS.md
+After=network-online.target
+Wants=network-online.target
+# Never give up restarting: backoff below spaces the attempts out.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/telegraph/%i.env
+# HTTP/2 streams were seen to hang behind egress proxies.
+Environment=GODEBUG=http2client=0
+ExecStart=%h/go/bin/telegraph sync --serve
+# telegraph saves its store and exits 0 on SIGTERM.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+Restart=always
+RestartSec=5
+# systemd >= 254: back off 5 s -> 5 min over repeated failures (older
+# versions ignore these two lines and restart every 5 s).
+RestartSteps=6
+RestartMaxDelaySec=300
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -218,22 +219,22 @@ func TestBotSessionReplay(t *testing.T) {
 		has     []string
 		buttons bool
 	}{
-		{"11", []string{"<b>⟁ Telegraph</b>", "/resolve", "/help", "README"}, true},
+		{"11", []string{"<b>⟁ Telegraph</b> v0.2.1", "/resolve", "/help"}, true},
 		{"11", []string{"<b>Commands</b>", "/resolve <i>handle@nym</i>", "/status", "/pin", "/about", "/version", "/help", "/start"}, false},
 		{"11", []string{"<b>alice@nym</b> · registered", "did:alice@nym", alice.KeyHex()[:8], "Not attested yet"}, false},
 		{"11", []string{"Which handle?"}, false},
 		{"11", []string{"<b>alice@nym</b>"}, false},
 		{"12", []string{"&lt;b&gt;x&lt;/b&gt;@nym", "not registered"}, false},
-		{"12", []string{"too long"}, false},
+		{"12", []string{"at most 64 characters"}, false},
 		{"12", []string{"🙂🙂", "is not a handle"}, false},
 		{"12", []string{"<b>Trust pin</b>", "<code>c700daaa", "not a secret"}, false},
 		{"13", []string{"v0.2.1", "Entries 1 · handles 1", "Checkpoint: none yet"}, false}, // before the channel post
 		{"13", []string{"<b>About Telegraph</b>", "README"}, true},
-		{"13", []string{"<b>Telegraph</b> v0.2.1"}, true},
+		{"13", []string{"<b>⟁ Telegraph</b> v0.2.1"}, true},
 		{"13", []string{"Unknown command <code>/frobnicate&lt;script&gt;</code>", "/help"}, false},
-		{"14", []string{"Send /help"}, false},
+		{"14", []string{"/help for commands"}, false},
 		{"14", []string{"<b>bob@nym</b> is not registered"}, false},
-		{"14", []string{"Send /help"}, false},
+		{"14", []string{"/help for commands"}, false},
 		{"33", []string{"Entries"}, false},
 	}
 	sent := api.sent()
@@ -280,8 +281,11 @@ func TestBotSessionReplay(t *testing.T) {
 			labels = append(labels, b.(map[string]any)["text"].(string))
 		}
 	}
-	if strings.Join(labels, ",") != "GitHub,Wiki,Channel,Release" {
+	if strings.Join(labels, ",") != "📣 Channel,GitHub,Wiki,Releases" {
 		t.Errorf("start buttons = %v", labels)
+	}
+	if u := kb[0].([]any)[0].(map[string]any)["url"]; u != DefaultChannelURL || DefaultChannelURL != "https://t.me/tgraph_net" {
+		t.Errorf("channel button = %v, want the public t.me/tgraph_net link", u)
 	}
 }
 
@@ -322,8 +326,8 @@ func TestSetupMenuMatchesHelp(t *testing.T) {
 	for _, s := range sets {
 		scopes = append(scopes, s["scope"].(map[string]any)["type"].(string))
 		cmds := s["commands"].([]any)
-		if len(cmds) != len(Commands) {
-			t.Fatalf("menu has %d commands, want %d", len(cmds), len(Commands))
+		if len(cmds) != len(MenuCommands(sy.DM.Priv != nil)) {
+			t.Fatalf("menu has %d commands, want %d", len(cmds), len(MenuCommands(sy.DM.Priv != nil)))
 		}
 		for _, c := range cmds {
 			name := c.(map[string]any)["command"].(string)
@@ -447,7 +451,7 @@ func TestEmptyStoreReplies(t *testing.T) {
 	r := &Responder{Version: "v0.2.1"}
 	st := memStore()
 	for cmd, want := range map[string]string{
-		"/status":          "no entries yet",
+		"/status":          "No entries yet",
 		"/pin":             "No pin yet",
 		"/resolve a@nym":   "not registered",
 		"/version":         "v0.2.1",
@@ -488,5 +492,46 @@ func TestLogLimiter(t *testing.T) {
 	want := []string{"poll: timeout", "other", "poll: timeout (repeated 4 more times)"}
 	if strings.Join(lines, "|") != strings.Join(want, "|") {
 		t.Fatalf("lines = %q", lines)
+	}
+}
+
+// TestServeStopsOnCancel: SIGTERM (a cancelled context) ends the serving
+// loop promptly and saves the store.
+func TestServeStopsOnCancel(t *testing.T) {
+	api := &fakeBotAPI{}
+	st := memStore()
+	sy, _, stop := testSyncer(t, api, st)
+	defer stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- sy.Serve(ctx) }()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve did not stop after cancel")
+	}
+}
+
+// TestPanicInHandlerIsContained: a panicking command yields a generic
+// reply, never the panic text.
+func TestPanicInHandlerIsContained(t *testing.T) {
+	api := &fakeBotAPI{batches: [][]map[string]any{{dm(1, 11, "/status")}}}
+	sy, _, stop := testSyncer(t, api, memStore())
+	defer stop()
+	sy.DM.Now = func() time.Time { panic("boom /secret/path") }
+	if _, err := sy.PollWindow(0); err != nil {
+		t.Fatal(err)
+	}
+	sent := api.sent()
+	if len(sent) != 1 {
+		t.Fatalf("%d replies", len(sent))
+	}
+	if txt := sent[0]["text"].(string); !strings.Contains(txt, "Something went wrong") || strings.Contains(txt, "boom") {
+		t.Fatalf("reply: %s", txt)
 	}
 }

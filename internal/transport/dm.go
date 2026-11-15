@@ -3,6 +3,7 @@ package transport
 import (
 	"crypto/ed25519"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ao3575911/telegraph/internal/checkpoint"
 	"github.com/ao3575911/telegraph/internal/crdt"
+	"github.com/ao3575911/telegraph/internal/handshake"
 	"github.com/ao3575911/telegraph/internal/store"
 	"github.com/ao3575911/telegraph/internal/tlog"
 )
@@ -31,32 +33,62 @@ type Command struct {
 // Commands lists every command users can send, in menu order. /dump is a
 // node-to-node protocol message on gossip channels and is not listed.
 var Commands = []Command{
-	{"resolve", "handle@nym", "Look up a handle: owner, DID, attestation"},
-	{"register", "name [did]", "Register name@nym, signed by this node for you"},
-	{"revoke", "name", "Revoke a handle you registered here"},
-	{"status", "", "Node and network status"},
-	{"stats", "", "Network counts and early-adopter spots left"},
-	{"pin", "", "The network's trust pin"},
-	{"about", "", "What Telegraph is and how it works"},
+	{"register", "name [did]", "Claim name@nym (held by this node for you)"},
+	{"card", "[name]", "Your bio line, tap to copy"},
+	{"resolve", "handle@nym", "Look up a handle"},
+	{"revoke", "name", "Release a handle you hold here"},
+	{"stats", "", "Network counts and badges"},
+	{"status", "", "Node and checkpoint health"},
+	{"pin", "", "The network trust pin"},
+	{"about", "", "How Telegraph works"},
 	{"version", "", "Node software version"},
-	{"help", "", "List commands"},
-	{"start", "", "Welcome"},
+	{"help", "", "All commands"},
+	{"start", "", "Welcome and links"},
 }
 
-// MenuCommands is Commands in setMyCommands form.
-func MenuCommands() []BotCommand {
-	out := make([]BotCommand, len(Commands))
-	for i, c := range Commands {
-		out[i] = BotCommand{Command: c.Name, Description: c.Short}
+// custodialOnly reports whether command needs bot registration on.
+func custodialOnly(name string) bool {
+	return name == "register" || name == "revoke" || name == "card"
+}
+
+// MenuCommands is Commands in setMyCommands form. Without bot
+// registration, /register, /revoke and /card are left out.
+func MenuCommands(register bool) []BotCommand {
+	var out []BotCommand
+	for _, c := range Commands {
+		if !register && custodialOnly(c.Name) {
+			continue
+		}
+		out = append(out, BotCommand{Command: c.Name, Description: c.Short})
 	}
 	return out
 }
 
+// Descriptions returns the bot's profile texts: the short description
+// (profile page and share preview, at most 120 characters) and the
+// description shown in an empty chat (at most 512).
+func (r *Responder) Descriptions() (short, long string) {
+	ch := strings.TrimPrefix(r.channelURL(), "https://t.me/")
+	short = "Decentralised handles like adz@nym, signed and gossiped over Telegram."
+	var b strings.Builder
+	fmt.Fprintf(&b, "⟁ Telegraph %s: a decentralised handle registry.\n\n", r.ver())
+	if r.Priv != nil {
+		short += " /register to claim yours."
+		b.WriteString("/register name: claim name@nym\n/card: your bio line, tap to copy\n")
+	}
+	b.WriteString("/resolve handle: look anyone up\n/help: all commands\n\n")
+	fmt.Fprintf(&b, "Entries are signed, gossiped on @%s and checkpointed by a 2-of-3 node committee. "+
+		"Open source: github.com/ao3575911/telegraph", ch)
+	return short, b.String()
+}
+
 // Public links shown as inline buttons.
+// The channel link is a public t.me/<username> URL, never an invite link;
+// operators override it with --channel-url or TELEGRAPH_CHANNEL_URL.
 const (
 	DefaultRepoURL    = "https://github.com/ao3575911/telegraph"
 	DefaultWikiURL    = "https://github.com/ao3575911/telegraph/wiki"
-	DefaultInviteURL  = "https://t.me/+KEEgOfyWFC1iZGE9"
+	DefaultChannelURL = "https://t.me/tgraph_net"
 	DefaultReleaseURL = "https://github.com/ao3575911/telegraph/releases/latest"
 	DefaultNodeURL    = "https://github.com/ao3575911/telegraph#install"
 	maxHandleLen      = tlog.MaxHandleLen
@@ -69,6 +101,11 @@ const (
 type Responder struct {
 	Version     string
 	BotUsername string // without @; groups are answered only when addressed to it
+	ChannelURL  string // public channel link for buttons; "" means DefaultChannelURL
+
+	// Log receives internal errors (never shown to users); nil means
+	// slog.Default().
+	Log *slog.Logger
 
 	// Priv enables /register and /revoke: the node signs handles for
 	// Telegram users (custodial). nil turns both commands off.
@@ -92,11 +129,14 @@ type Responder struct {
 	auditRep checkpoint.Report
 }
 
-// lookup is a resolver over the store's log. It skips the whole-log
-// re-verification st.Registry does: handshake.Owner verifies every entry
-// it folds for the handle asked about, which is all a lookup needs, and
-// one bad entry elsewhere no longer breaks every /resolve.
-func lookup(st *store.Store) *crdt.Registry { return &crdt.Registry{All: st.Entries} }
+// lookupHandle resolves one handle through the store's per-handle index:
+// the same answer as st.Registry().Resolve(handle) without scanning or
+// re-verifying the whole log. handshake.Owner verifies every entry it
+// folds for the handle, which is all a lookup needs, so one bad entry
+// elsewhere cannot break every /resolve.
+func lookupHandle(st *store.Store, handle string) (tlog.Entry, handshake.Status, bool) {
+	return crdt.ResolveIn(handle, st.HandleEntries(handle), st.Entries)
+}
 
 // audit returns checkpoint.Audit for st, recomputed only when the log
 // grew or a checkpoint gained co-signatures. Audit is O(log) and used to
@@ -225,7 +265,7 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 	ok, wait := r.allow(in.Chat)
 	if !ok {
 		if wait > 0 {
-			return r.reply(in, fmt.Sprintf("Too many messages. Try again in %d s.", int(wait.Seconds())), nil), true
+			return r.rateLimited(in, wait), true
 		}
 		return Reply{}, false
 	}
@@ -241,7 +281,7 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 		if in.Private && looksLikeHandle(text) {
 			return r.resolve(st, in, text), true
 		}
-		return r.reply(in, "Send /help to see what I can do, or a handle like <code>alice@nym</code> to look it up.", nil), true
+		return r.reply(in, "Send a handle like <code>alice@nym</code> to look it up, or /help for commands.", nil), true
 	}
 	switch cmd {
 	case "start":
@@ -251,10 +291,10 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 	case "resolve":
 		if arg == "" {
 			if !in.Private {
-				return r.reply(in, "Usage: <code>/resolve handle@nym</code>", nil), true
+				return r.usage(in, "/resolve handle@nym"), true
 			}
 			r.setPending(in.Chat, "resolve")
-			rep := r.reply(in, "Which handle? Send it as a reply, for example <code>alice@nym</code>.", nil)
+			rep := r.reply(in, "Which handle? Reply with one, for example <code>alice@nym</code>.", nil)
 			rep.ForceReply = "alice@nym"
 			return rep, true
 		}
@@ -262,7 +302,7 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 	case "register":
 		if in.Private && arg == "" && r.Priv != nil {
 			r.setPending(in.Chat, "register")
-			rep := r.reply(in, "Which name? Send it as a reply, for example <code>adz</code> "+
+			rep := r.reply(in, "Which name? Reply with one, for example <code>adz</code> "+
 				"(or <code>adz did:key:…</code> to set your own DID).", nil)
 			rep.ForceReply = "adz"
 			return rep, true
@@ -270,6 +310,8 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 		return r.register(st, in, arg), true
 	case "revoke":
 		return r.revoke(st, in, arg), true
+	case "card":
+		return r.card(st, in, arg), true
 	case "pin":
 		return r.pin(st, in), true
 	case "status":
@@ -281,7 +323,7 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 	case "version":
 		return r.version(in), true
 	}
-	return r.reply(in, fmt.Sprintf("Unknown command <code>/%s</code>. Send /help for the list.", esc(clip(cmd, 32))), nil), true
+	return r.reply(in, fmt.Sprintf("⚠️ Unknown command <code>/%s</code>. Send /help for the list.", esc(clip(cmd, 32))), nil), true
 }
 
 // parse splits "/Cmd@bot arg" into ("cmd", "arg", true).
@@ -363,10 +405,17 @@ func (r *Responder) reply(in Incoming, text string, buttons [][]Button) Reply {
 	return rep
 }
 
-func linkButtons() [][]Button {
+func (r *Responder) channelURL() string {
+	if r.ChannelURL != "" {
+		return r.ChannelURL
+	}
+	return DefaultChannelURL
+}
+
+func (r *Responder) linkButtons() [][]Button {
 	return [][]Button{
-		{{Text: "GitHub", URL: DefaultRepoURL}, {Text: "Wiki", URL: DefaultWikiURL}},
-		{{Text: "Channel", URL: DefaultInviteURL}, {Text: "Release", URL: DefaultReleaseURL}},
+		{{Text: "📣 Channel", URL: r.channelURL()}, {Text: "GitHub", URL: DefaultRepoURL}},
+		{{Text: "Wiki", URL: DefaultWikiURL}, {Text: "Releases", URL: DefaultReleaseURL}},
 	}
 }
 
@@ -378,59 +427,99 @@ func (r *Responder) ver() string {
 }
 
 func (r *Responder) start(in Incoming) Reply {
-	return r.reply(in, "<b>⟁ Telegraph</b>\n"+
-		"A decentralised handle registry. Handles like <code>alice@nym</code> live in signed logs "+
-		"that nodes gossip over Telegram and checkpoint together.\n\n"+
-		"/resolve — look up a handle\n"+
-		"/register — claim a handle like <code>adz@nym</code>\n"+
-		"/status — this node and the network\n"+
-		"/help — every command\n\n"+
-		"Run your own node: <a href=\""+DefaultNodeURL+"\">README</a>", linkButtons())
+	var b strings.Builder
+	fmt.Fprintf(&b, "<b>⟁ Telegraph</b> %s\n", esc(r.ver()))
+	b.WriteString("Decentralised handles like <code>alice@nym</code>, signed and gossiped over Telegram.\n\n")
+	if r.Priv != nil {
+		b.WriteString("/register <i>name</i> — claim name@nym\n/card — your bio line, tap to copy\n")
+	}
+	b.WriteString("/resolve <i>handle</i> — look up a handle\n/stats — network counts\n/help — all commands")
+	return r.reply(in, b.String(), r.linkButtons())
 }
 
 func (r *Responder) help(in Incoming) Reply {
 	var b strings.Builder
 	b.WriteString("<b>Commands</b>\n")
 	for _, c := range Commands {
+		if r.Priv == nil && custodialOnly(c.Name) {
+			continue
+		}
 		b.WriteString("/" + c.Name)
 		if c.Args != "" {
 			b.WriteString(" <i>" + esc(c.Args) + "</i>")
 		}
 		b.WriteString(" — " + esc(c.Short) + "\n")
 	}
-	b.WriteString("\nYou can also send a handle on its own, like <code>alice@nym</code>.")
+	b.WriteString("\nOr send a handle on its own, like <code>alice@nym</code>.")
 	return r.reply(in, b.String(), nil)
 }
 
 func (r *Responder) about(in Incoming) Reply {
 	return r.reply(in, "<b>About Telegraph</b>\n"+
-		"• Each node keeps a signed, hash-chained log of handle claims.\n"+
-		"• Nodes gossip entries over Telegram channels and merge them the same way, so they agree.\n"+
-		"• A rotating committee of three nodes signs checkpoints; two signatures make one valid.\n"+
-		"• New nodes trust only history that leads back to a published pin (/pin).\n"+
-		"• Handles can be swapped atomically between owners.\n\n"+
-		"No blockchain and no central server. Run your own node: <a href=\""+DefaultNodeURL+"\">README</a>",
-		linkButtons())
+		"• Every node keeps a signed, hash-chained log of handle entries.\n"+
+		"• Nodes gossip entries on a public Telegram channel and merge them deterministically.\n"+
+		"• First come, first served: only a handle's owner can update, revoke or swap it.\n"+
+		"• A committee of three nodes signs checkpoints; two signatures make one valid.\n"+
+		"• New nodes trust only history that leads back to the published pin (/pin).\n\n"+
+		"No blockchain, no central server. Run your own node: <a href=\""+DefaultNodeURL+"\">README</a>",
+		r.linkButtons())
 }
 
 func (r *Responder) version(in Incoming) Reply {
-	return r.reply(in, "<b>Telegraph</b> "+esc(r.ver()),
+	return r.reply(in, "<b>⟁ Telegraph</b> "+esc(r.ver()),
 		[][]Button{{{Text: "Releases", URL: DefaultReleaseURL}}})
+}
+
+// Replies for the common failure kinds, so every command words them alike.
+
+func (r *Responder) usage(in Incoming, form string) Reply {
+	return r.reply(in, "⚠️ Usage: <code>"+esc(form)+"</code>", nil)
+}
+
+func (r *Responder) badInput(in Incoming, why string) Reply {
+	return r.reply(in, "⚠️ "+esc(why), nil)
+}
+
+func (r *Responder) unknownHandle(in Incoming, handle string) Reply {
+	msg := "⚠️ <b>" + esc(handle) + "</b> is not registered."
+	if r.Priv != nil && strings.HasSuffix(handle, "@"+Namespace) {
+		msg += " It is free: /register " + esc(strings.TrimSuffix(handle, "@"+Namespace))
+	}
+	return r.reply(in, msg, nil)
+}
+
+func (r *Responder) rateLimited(in Incoming, wait time.Duration) Reply {
+	return r.reply(in, fmt.Sprintf("⏳ Too many messages. Try again in %d s.", int(wait.Seconds())), nil)
+}
+
+// internalError logs err for the operator and tells the user only that
+// something failed: no error text, paths or keys reach the chat.
+func (r *Responder) internalError(in Incoming, op string, err error) Reply {
+	l := r.Log
+	if l == nil {
+		l = slog.Default()
+	}
+	l.Error("bot command failed", "op", op, "err", err)
+	return r.reply(in, "⚠️ Something went wrong on this node. Please try again in a minute.", nil)
 }
 
 func (r *Responder) resolve(st *store.Store, in Incoming, handle string) Reply {
 	switch {
 	case utf8.RuneCountInString(handle) > maxHandleLen:
-		return r.reply(in, "That is too long for a handle (64 characters at most).", nil)
+		return r.badInput(in, "Handles are at most 64 characters.")
 	case !looksLikeHandle(handle):
-		return r.reply(in, "<code>"+esc(clip(handle, 64))+"</code> is not a handle. Handles look like <code>alice@nym</code>.", nil)
+		return r.reply(in, "⚠️ <code>"+esc(clip(handle, 64))+"</code> is not a handle. Handles look like <code>alice@nym</code>.", nil)
 	}
-	e, status, ok := lookup(st).Resolve(handle)
+	e, status, ok := lookupHandle(st, handle)
 	if !ok {
-		return r.reply(in, "<b>"+esc(handle)+"</b> is not registered.", nil)
+		return r.unknownHandle(in, handle)
 	}
 	if e.Payload.Kind == tlog.KindRevoke {
-		return r.reply(in, "<b>"+esc(handle)+"</b> was revoked by its owner.", nil)
+		msg := "<b>" + esc(handle) + "</b> was revoked by its owner and is free."
+		if r.Priv != nil && strings.HasSuffix(handle, "@"+Namespace) {
+			msg += " /register " + esc(strings.TrimSuffix(handle, "@"+Namespace)) + " to claim it."
+		}
+		return r.reply(in, msg, nil)
 	}
 	did := "<i>none yet (new owner has not set one)</i>"
 	if e.Payload.Kind == tlog.KindRegister {
@@ -478,7 +567,7 @@ func (r *Responder) status(st *store.Store, in Incoming) Reply {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<b>⟁ Telegraph</b> %s\n", esc(r.ver()))
 	if len(st.Entries) == 0 {
-		b.WriteString("This node has no entries yet.")
+		b.WriteString("No entries yet.")
 		return r.reply(in, b.String(), nil)
 	}
 	ns := Stats(st, r.now())

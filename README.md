@@ -23,7 +23,8 @@ standard library only.
 | Pinned bootstrap | A new node trusts only a checkpoint hash shared out of band; a dump without it is rejected as a whole. |
 | Atomic swaps | Two owners exchange handles with an HTLC-style hashlock and staggered expiries; either both move or neither does. [Demo](docs/demo/swap.gif) |
 | Bio cards | `⟁ alice@nym · 1a2b3c4d` in a profile, verifiable against the owner's signed attestation. [Demo](docs/demo/card.gif) |
-| Telegram bot | A serving node answers `/resolve`, `/status` and `/pin`, and can register handles for people (`/register`, custodial and opt-in). [Bot docs](docs/TELEGRAM.md) |
+| First-come ownership | The first register owns a handle; only its key can update, revoke or swap it. |
+| Telegram bot | A serving node answers `/resolve`, `/status` and `/pin`, and can register handles for people (`/register`, `/card`; custodial and opt-in). [Bot docs](docs/TELEGRAM.md) · channel [@tgraph_net](https://t.me/tgraph_net) |
 
 Docs: [quickstart](docs/QUICKSTART.md) · [wiki](https://github.com/ao3575911/telegraph/wiki) ·
 [site](https://ao3575911.github.io/telegraph/). More recordings: [help](docs/demo/help.gif) · [sync and merge](docs/demo/sync.gif) ·
@@ -107,7 +108,8 @@ Telegram's command menu and rate-limited:
 |---|---|
 | `/resolve handle@nym` | owner, DID, status and checkpoint attestation |
 | `/register name [did]` | register `name@nym`, signed by this node for you (custodial; DM only; needs `--bot-register`) |
-| `/revoke name` | revoke a handle you registered through the bot |
+| `/card [name]` | your bio line `⟁ name@nym · 1a2b3c4d`, tap to copy |
+| `/revoke name` | release a handle you hold through the bot |
 | `/status` · `/stats` · `/pin` | node and network status · network counts and early-adopter spots · the trust pin |
 | `/about` · `/version` · `/help` · `/start` | about, version, every command, welcome |
 
@@ -118,6 +120,25 @@ writes are `/register` and `/revoke`, signed by the node. See
 The Telegram transport is the Bot API (`getUpdates`, `sendMessage`). The
 test suite exercises it against a fake Bot API server; multi-node tests and
 demos use the file bus.
+
+## Run a node
+
+Keep a serving node up across crashes and reboots with a user service (no
+sudo; systemd on Linux, launchd on macOS):
+
+```sh
+sh scripts/install-service.sh node1     # writes ~/.config/telegraph/node1.env (0600)
+$EDITOR ~/.config/telegraph/node1.env   # paste the bot token
+sh scripts/install-service.sh node1     # installs and starts telegraph@node1
+systemctl --user status telegraph@node1
+journalctl --user -u telegraph@node1 -f
+```
+
+It restarts on failure with backoff, survives Telegram timeouts, and stops
+cleanly on SIGTERM. Joining a second committee node:
+`sh scripts/node-join.sh node2 <pin> node2`. Full runbook, multi-node
+settings and hosts without systemd:
+[docs/NODE-OPERATIONS.md](docs/NODE-OPERATIONS.md).
 
 ## Commands
 
@@ -132,6 +153,7 @@ demos use the file bus.
 | `pin [--rotate]` · `peers` · `net` | trust root, peers, network health |
 | `card --handle H` · `attest --line L` · `scan L` | bio cards |
 | `swap offer\|accept\|claim\|reclaim\|status` | atomic handle swap |
+| `committee` · `config [key]` | next checkpoint committee and peers · effective settings (no secrets) |
 | `version` | print the version |
 
 Output is coloured on a terminal. Colour is off when stdout is not a
@@ -147,7 +169,7 @@ vhs docs/demo/main.tape               # re-record a demo (charmbracelet/vhs)
 
 ## Status
 
-Pre-1.0 (0.2.3). The protocol and on-disk format may change. Known limits
+Pre-1.0 (0.3.0). The protocol and on-disk format may change. Known limits
 are listed in the [usage report](docs/USAGE-REPORT.md#open-issues).
 
 ## Licence

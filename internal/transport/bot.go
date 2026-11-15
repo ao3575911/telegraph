@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	mrand "math/rand"
 	"net/http"
 	"strings"
@@ -38,7 +39,19 @@ type Bot struct {
 	offset int64
 	hc     *http.Client
 	fails  int
-	sleep  func(time.Duration) // nil: time.Sleep; tests stub it
+	sleep  func(time.Duration) // nil: an interruptible sleep; tests stub it
+	ctx    context.Context     // nil: context.Background(); cancelled on shutdown
+}
+
+// SetContext makes every request and backoff sleep abort when ctx is
+// cancelled, so a SIGTERM does not wait out a 35 s long poll.
+func (b *Bot) SetContext(ctx context.Context) { b.ctx = ctx }
+
+func (b *Bot) parent() context.Context {
+	if b.ctx != nil {
+		return b.ctx
+	}
+	return context.Background()
 }
 
 // NewBot returns a client on an HTTP/1.1-only transport. HTTP/2 streams
@@ -79,7 +92,7 @@ func (b *Bot) api(method string, params any, timeout time.Duration) ([]byte, err
 	if base == "" {
 		base = "https://api.telegram.org"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(b.parent(), timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/bot"+b.Token+"/"+method, bytes.NewReader(body))
 	if err != nil {
@@ -149,8 +162,9 @@ type Update struct {
 }
 
 // Poll long-polls getUpdates. After a failure it drops idle connections
-// and backs off (1 s doubling to 30 s, with jitter, or Telegram's
-// retry_after) before returning the error.
+// and backs off exponentially (1 s doubling to 30 s, with jitter, or
+// Telegram's retry_after) before returning the error, so a flaky network
+// or proxy timeouts never spin the loop or crash the node.
 func (b *Bot) Poll(timeoutSec int) ([]Update, error) {
 	raw, err := b.api("getUpdates", map[string]any{
 		"offset": b.offset, "timeout": timeoutSec, "allowed_updates": AllowedUpdates,
@@ -163,6 +177,9 @@ func (b *Bot) Poll(timeoutSec int) ([]Update, error) {
 	if err := json.Unmarshal(raw, &ups); err != nil {
 		b.backoff(err)
 		return nil, err
+	}
+	if b.fails > 0 {
+		slog.Info("telegram poll recovered", "failures", b.fails)
 	}
 	b.fails = 0
 	for _, u := range ups {
@@ -185,11 +202,16 @@ func (b *Bot) backoff(err error) {
 	if errors.As(err, &ra) && ra.After > d {
 		d = ra.After
 	}
-	sleep := b.sleep
-	if sleep == nil {
-		sleep = time.Sleep
+	if b.sleep != nil {
+		b.sleep(d)
+		return
 	}
-	sleep(d)
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+	case <-b.parent().Done():
+	}
 }
 
 func (b *Bot) Send(chat, text string) error {
@@ -267,6 +289,28 @@ func (b *Bot) SetupMenu(cmds []BotCommand) error {
 		"menu_button": map[string]any{"type": "commands"},
 	}, RequestSlack); err != nil {
 		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// SetupDescriptions sets the bot's short description and description,
+// skipping a call when Telegram already has the same text (both methods
+// are rate limited and the node calls this at every start).
+func (b *Bot) SetupDescriptions(short, long string) error {
+	var errs []error
+	for _, d := range []struct{ get, set, field, text string }{
+		{"getMyShortDescription", "setMyShortDescription", "short_description", short},
+		{"getMyDescription", "setMyDescription", "description", long},
+	} {
+		if raw, err := b.api(d.get, map[string]any{}, RequestSlack); err == nil {
+			var cur map[string]string
+			if json.Unmarshal(raw, &cur) == nil && cur[d.field] == d.text {
+				continue
+			}
+		}
+		if _, err := b.api(d.set, map[string]any{d.field: d.text}, RequestSlack); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }

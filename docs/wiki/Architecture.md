@@ -16,7 +16,19 @@ order.
 
 The registry is a CRDT. Merging is a union of entries de-duplicated by hash
 and applied in hash order, so merge is commutative, associative and
-idempotent. Plain register and revoke entries resolve last-writer-wins.
+idempotent.
+
+**Ownership (0.3.0, [#15](https://github.com/ao3575911/telegraph/issues/15)).**
+`handshake.Owner` folds a handle's entries in causal order (timestamp, then
+each signer's chain, then hash). The first valid register takes a free
+handle. From then on only the owner's own register (to change the DID),
+revoke or lock counts; registers, revokes and locks from any other key are
+void. A revoke by the owner frees the handle for the next register. A swap
+moves ownership to the claimant, after which the same rule applies to the
+new owner. Because past timestamps are never rejected, a node also refuses
+to admit a register from another key dated at or before the current
+owner's tenure began (a backdated takeover); later ones are kept but void.
+0.2.x nodes still resolve last-writer-wins, so every node must run 0.3.0.
 The store persists entries in `TELEGRAPH_HOME/data.json` (written through a
 temporary file, fsync and rename) and tracks which local entries still need
 publishing. The JSON document is the practical cap: a node runs out of
@@ -61,8 +73,8 @@ claim the initiator's handle. If anyone stops, locks can be reclaimed after
 expiry. A lock counts only if its signer owned the handle immediately
 before it.
 
-A bio card is one line, `⟁ handle@nym · <key prefix>`, that the owner signs
-with `attest`. `scan` checks the line against the current owner and reports
+A bio card is one line, `⟁ handle@nym · <entry prefix>`, that the owner signs
+with `attest` (the bot's `/card` signs it for custodial handles). `scan` checks the line against the current owner and reports
 VERIFIED, unattested, or STALE after a transfer.
 
 ## Transport (`internal/transport`)
@@ -71,7 +83,7 @@ The Telegram transport uses only the Bot API (`getUpdates`, `sendMessage`).
 Entries are framed into messages and posted to every configured channel;
 nodes poll, ingest, co-sign pending checkpoints and send heartbeats.
 `sync --serve` also answers `/dump` requests so new nodes can bootstrap,
-and replies to people (`/resolve`, `/register`, `/revoke`, `/status`,
+and replies to people (`/register`, `/card`, `/resolve`, `/revoke`, `/status`,
 `/stats`, `/pin`, `/about`, `/version`, `/help`, `/start`) from the local store; see
 [TELEGRAM.md](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md). Private-chat text is never parsed as a
 frame; the only entries the bot writes are custodial `/register` and

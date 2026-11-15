@@ -78,7 +78,7 @@ func TestParseRegister(t *testing.T) {
 func TestRegisterSignsAndResolves(t *testing.T) {
 	r, st := regResponder(t), memStore()
 	got := send(t, r, st, 42, "/register adz")
-	for _, want := range []string{"Registered <b>adz@nym</b>", "did:tg:42", "Custodial", "user id"} {
+	for _, want := range []string{"Registered <b>adz@nym</b>", "did:tg:42", "Held for you by this node", "user id", "/card"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("reply lacks %q: %s", want, got)
 		}
@@ -114,7 +114,7 @@ func TestRegisterOwnerChecks(t *testing.T) {
 	// A handle another key owns is refused.
 	other := signedEntry(t, "bob@nym")
 	st.AppendEntry(other)
-	if got := send(t, r, st, 42, "/register bob"); !strings.Contains(got, "someone else") {
+	if got := send(t, r, st, 42, "/register bob"); !strings.Contains(got, "another key") {
 		t.Errorf("foreign handle: %s", got)
 	}
 	// A handle the node registered itself (CLI) has no custodian: refused.
@@ -134,7 +134,7 @@ func TestRegisterOwnerChecks(t *testing.T) {
 	if got := send(t, r, st, 7, "/register adz"); !strings.Contains(got, "Registered") {
 		t.Errorf("after revoke: %s", got)
 	}
-	if got := send(t, r, st, 42, "/revoke zzz"); !strings.Contains(got, "not registered to you") {
+	if got := send(t, r, st, 42, "/revoke zzz"); !strings.Contains(got, "You do not hold") {
 		t.Errorf("revoke unknown: %s", got)
 	}
 }
@@ -144,7 +144,7 @@ func TestRegisterPerUserCap(t *testing.T) {
 	for _, n := range []string{"a1", "a2", "a3"} {
 		send(t, r, st, 42, "/register "+n)
 	}
-	if got := send(t, r, st, 42, "/register a4"); !strings.Contains(got, "most one account") {
+	if got := send(t, r, st, 42, "/register a4"); !strings.Contains(got, "limit per account") {
 		t.Fatalf("cap: %s", got)
 	}
 	if got := send(t, r, st, 42, "/register a1 did:key:z6MkX"); !strings.Contains(got, "Updated") {
@@ -180,7 +180,7 @@ func TestRegisterPromptAndDisabled(t *testing.T) {
 	}
 	off := &Responder{}
 	for _, cmd := range []string{"/register adz", "/register", "/revoke adz"} {
-		if got := send(t, off, st, 42, cmd); !strings.Contains(got, "does not register") {
+		if got := send(t, off, st, 42, cmd); !strings.Contains(got, "does not hold handles") {
 			t.Errorf("%s with registration off: %s", cmd, got)
 		}
 	}

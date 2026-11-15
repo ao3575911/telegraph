@@ -18,7 +18,9 @@ go install github.com/ao3575911/telegraph/cmd/telegraph@v0.2.3                  
 On Telegram, DM a node's bot: `/resolve alice@nym` to look up a handle, or
 `/register adz` to claim `adz@nym`. Bot registration is custodial: the
 node's key owns the handle, and only your Telegram account can change or
-revoke it there. See [Telegram bot](TELEGRAM.html).
+revoke it there. Then `/card` gives your bio line, tap to copy. Gossip
+runs on the public channel [@tgraph_net](https://t.me/tgraph_net). See
+[Telegram bot](TELEGRAM.html) and [running a node](NODE-OPERATIONS.html).
 
 - [Quickstart](QUICKSTART.html): a three-node run on one machine, and how to register a handle
 - [Telegram bot](TELEGRAM.html): commands, custody rules, limits

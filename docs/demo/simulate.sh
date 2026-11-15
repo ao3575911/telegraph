@@ -42,6 +42,8 @@ step err carol register --handle x@nym
 for n in alice bob carol alice bob carol; do step ok $n sync --secs 0; done
 SYNC1="alice $(entries alice) · bob $(entries bob) · carol $(entries carol)"
 step ok alice resolve bob@nym
+step err bob register --handle alice@nym --did did:key:mallory
+step ok carol committee
 step ok carol audit
 for n in alice bob carol; do
 	step ok $n checkpoint
