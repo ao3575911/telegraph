@@ -17,6 +17,7 @@ one table in `internal/transport/dm.go`, so they always match.
 | `/register name [did]` | Registers `name@nym`, signed by this node (see below). Without a name, the bot asks for one. Private chats only. |
 | `/revoke name` | Revokes a handle you registered through the bot. Private chats only. |
 | `/status` | Entries, handles and issuers; latest checkpoint, its age and committee signatures; audit result |
+| `/stats` | Network counts: active, revoked and total handles, registrars, nodes online, swaps, checkpoints, your handles here, and early-adopter spots left. `/register` shows your handle's number and a badge (Founding 100, Early adopter for the first 1000) |
 | `/pin` | The network's trust pin (a checkpoint fingerprint, safe to share) |
 | `/about` | What Telegraph is and how it works |
 | `/version` | Node software version, with a Releases button |

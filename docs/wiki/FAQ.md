@@ -28,7 +28,7 @@ the third after two hours. The returning leader accepts their checkpoint.
 
 **What can I ask the bot?**
 Open the command menu, or send `/help`: `/resolve handle@nym`,
-`/register name [did]`, `/revoke name`, `/status`, `/pin`, `/about`,
+`/register name [did]`, `/revoke name`, `/status`, `/stats`, `/pin`, `/about`,
 `/version`, `/help`, `/start`. You can also send a handle on its own.
 Only `/register` and `/revoke` write to the log, signed by the node.
 
