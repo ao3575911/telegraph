@@ -2,6 +2,7 @@ package transport
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
@@ -41,7 +42,10 @@ type Syncer struct {
 	DM *Responder
 
 	limiter *logLimiter
+	ctx     context.Context // set by Serve; nil means never cancelled
 }
+
+func (s *Syncer) done() bool { return s.ctx != nil && s.ctx.Err() != nil }
 
 func NewSyncer(bots []Conn, channels []string, st *store.Store,
 	priv ed25519.PrivateKey) *Syncer {
@@ -132,6 +136,10 @@ func (s *Syncer) IngestText(text string) (bool, error) {
 	if s.staging {
 		return s.Store.StageEntry(e), nil
 	}
+	if err := s.Store.CheckTakeover(e); err != nil {
+		s.Store.MarkSeen(e.HashHex()) // never republish it
+		return true, fmt.Errorf("entry %s for %q refused: %w", e.HashHex()[:8], clip(e.Payload.Handle, 64), err)
+	}
 	if merged := s.Store.AppendReceived(e); merged {
 		s.MaybeCoSign()
 		return true, nil // PollWindow saves once per batch
@@ -196,7 +204,7 @@ func (s *Syncer) answerUser(b Conn, m *Msg) {
 	if m.From != nil && !m.From.IsBot {
 		in.User = m.From.ID
 	}
-	reply, ok := s.DM.Handle(s.Store, in)
+	reply, ok := s.safeHandle(in)
 	// /register and /revoke append signed entries: gossip them now.
 	if len(s.Store.Pending()) > 0 {
 		if _, err := s.PublishPending(); err != nil {
@@ -209,6 +217,18 @@ func (s *Syncer) answerUser(b Conn, m *Msg) {
 	if err := rp.SendReply(fmt.Sprintf("%d", m.Chat.ID), reply); err != nil {
 		s.logf("reply: %v", err)
 	}
+}
+
+// safeHandle runs the responder, turning a panic into a logged error and
+// a generic reply: one bad message must not take the node down, and no
+// stack trace reaches a chat.
+func (s *Syncer) safeHandle(in Incoming) (rep Reply, ok bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			rep, ok = s.DM.internalError(in, "panic", fmt.Errorf("%v", p)), true
+		}
+	}()
+	return s.DM.Handle(s.Store, in)
 }
 
 // SetupBots fetches each bot's username (for group addressing) and
@@ -225,8 +245,12 @@ func (s *Syncer) SetupBots() {
 			s.DM.BotUsername = b.Username
 		}
 		if s.DM != nil {
-			if err := b.SetupMenu(MenuCommands()); err != nil {
+			if err := b.SetupMenu(MenuCommands(s.DM.Priv != nil)); err != nil {
 				s.logf("command menu: %v", err)
+			}
+			short, long := s.DM.Descriptions()
+			if err := b.SetupDescriptions(short, long); err != nil {
+				s.logf("bot description: %v", err)
 			}
 		}
 	}
@@ -278,7 +302,7 @@ func (s *Syncer) PollWindow(winSec int) (int, error) {
 				}
 			}
 		}
-		if nowSec() >= deadline {
+		if nowSec() >= deadline || s.done() {
 			return merged, nil
 		}
 	}
@@ -452,12 +476,20 @@ func (s *Syncer) Bootstrap(winSec int) (int, error) {
 	return n, nil
 }
 
-// Serve: publish, then poll + checkpoint + heartbeat + self-heal forever.
-func (s *Syncer) Serve() {
+// Serve publishes, then polls, checkpoints, heartbeats and self-heals
+// until ctx is cancelled (SIGTERM/SIGINT). On the way out it saves the
+// store, so a restart loses nothing it had merged.
+func (s *Syncer) Serve(ctx context.Context) error {
+	for _, b := range s.Bots {
+		if c, ok := b.(interface{ SetContext(context.Context) }); ok {
+			c.SetContext(ctx)
+		}
+	}
+	s.ctx = ctx
 	if _, err := s.PublishPending(); err != nil {
 		log.Printf("publish: %v", err)
 	}
-	for {
+	for ctx.Err() == nil {
 		if len(s.Store.Pending()) > 0 { // retry entries a failed send left behind
 			if _, err := s.PublishPending(); err != nil {
 				log.Printf("publish: %v", err)
@@ -498,4 +530,6 @@ func (s *Syncer) Serve() {
 			}
 		}
 	}
+	log.Printf("shutting down: saving store")
+	return s.Store.Save()
 }

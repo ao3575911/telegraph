@@ -6,7 +6,9 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -18,7 +20,10 @@ import (
 // Bot registration is custodial. The node signs the register entry with
 // its own key, so on the network the node's key owns the handle. The node
 // records the Telegram user id in store.Custody and only that user can
-// change the DID or revoke the handle through the bot.
+// change the DID or revoke the handle through the bot. The bot follows
+// the network's first-come rule: it never signs for a handle another key
+// owns, a handle the operator holds without custody, or one locked in a
+// swap.
 
 // MaxHandlesPerUser caps how many handles one Telegram user can hold
 // through one node.
@@ -99,68 +104,84 @@ func (r *Responder) dmOnly(in Incoming, cmd string) Reply {
 	if r.BotUsername != "" {
 		buttons = [][]Button{{{Text: "Open a private chat", URL: "https://t.me/" + r.BotUsername}}}
 	}
-	return r.reply(in, "/"+cmd+" works only in a private chat with me.", buttons)
+	return r.reply(in, "🔒 /"+cmd+" works only in a private chat with me.", buttons)
 }
+
+// noRegister is the reply when this node has bot registration turned off.
+func (r *Responder) noRegister(in Incoming) Reply {
+	return r.reply(in, "This node does not hold handles for Telegram users. "+
+		"Register with your own key using the CLI: <a href=\""+DefaultNodeURL+"\">install</a>.", nil)
+}
+
+const registerUsage = "/register name  or  /register name did:method:id"
 
 func (r *Responder) register(st *store.Store, in Incoming, arg string) Reply {
 	switch {
 	case !in.Private:
 		return r.dmOnly(in, "register")
 	case r.Priv == nil:
-		return r.reply(in, "This node does not register handles. Register with the CLI on your own node: "+
-			"<a href=\""+DefaultNodeURL+"\">README</a>", nil)
+		return r.noRegister(in)
 	}
 	user := sender(in)
 	handle, did, defaulted, err := parseRegister(arg, user)
 	if err != nil {
 		if err.Error() == "usage" {
-			return r.reply(in, "Usage: <code>/register name</code> or <code>/register name did:method:id</code>", nil)
+			return r.usage(in, registerUsage)
 		}
-		return r.reply(in, "⚠️ "+esc(err.Error())+".", nil)
+		return r.badInput(in, sentence(err.Error()))
 	}
 	prev, refusal := r.checkOwner(st, handle, user)
 	if refusal != "" {
 		return r.reply(in, refusal, nil)
 	}
 	if prev != nil && prev.Payload.Kind == tlog.KindRegister && prev.Payload.DID == did {
-		return r.reply(in, "<b>"+handle+"</b> is already yours with DID <code>"+esc(did)+"</code>.", nil)
+		return r.reply(in, "<b>"+handle+"</b> is already yours with DID <code>"+esc(did)+"</code>. /card for your bio line.", nil)
 	}
-	if prev == nil && held(st, user, handle) >= MaxHandlesPerUser {
-		return r.reply(in, fmt.Sprintf("You already hold %d handles here, the most one account can. "+
+	if prev == nil && held(st, r.pub(), user, handle) >= MaxHandlesPerUser {
+		return r.reply(in, fmt.Sprintf("⚠️ You already hold %d handles here, the limit per account. "+
 			"/revoke one first.", MaxHandlesPerUser), nil)
 	}
-	e, err := r.sign(st, tlog.KindRegister, handle, did, prev)
-	if err != nil {
-		return r.reply(in, "⚠️ Could not register right now. Try again later.", nil)
-	}
+	// Bind custody before the entry exists, so a crash between the two
+	// can never leave a node-signed handle without its Telegram owner.
 	if st.Custody == nil {
 		st.Custody = map[string]int64{}
 	}
+	hadCustody, had := st.Custody[handle]
 	st.Custody[handle] = user
-	_ = st.Save()
+	e, err := r.sign(st, tlog.KindRegister, handle, did, prev)
+	if err != nil {
+		if had {
+			st.Custody[handle] = hadCustody
+		} else {
+			delete(st.Custody, handle)
+		}
+		return r.internalError(in, "register", err)
+	}
+	if err := st.Save(); err != nil {
+		r.logErr("save after register", err)
+	}
 	verb := "Registered"
 	if prev != nil && prev.Payload.Kind == tlog.KindRegister {
 		verb = "Updated"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "✅ %s <b>%s</b>\nDID <code>%s</code>\nEntry <code>%s</code>\n\n", verb, handle, esc(did), short8(e.HashHex()))
-	fmt.Fprintf(&b, "<b>Custodial:</b> this node signed it with its key <code>%s</code>, so on the network the node owns it. "+
-		"Only your Telegram account can change or /revoke it here. To hold the key yourself, run your own node.\n\n",
+	fmt.Fprintf(&b, "Held for you by this node (key <code>%s</code>). Only your Telegram account can change or /revoke it.\n",
 		short8(e.KeyHex()))
 	if defaulted {
-		b.WriteString("The default DID contains your Telegram user id, and it is public. " +
-			"Send <code>/register " + strings.TrimSuffix(handle, "@"+Namespace) + " did:method:id</code> to use your own.\n\n")
+		b.WriteString("\nThe default DID shows your Telegram user id publicly. To use your own: <code>/register " +
+			strings.TrimSuffix(handle, "@"+Namespace) + " did:method:id</code>\n")
 	}
 	if prev == nil {
 		if n := ordinal(st, handle); n > 0 {
 			if badge := Badge(n); badge != "" {
-				fmt.Fprintf(&b, "%s: handle #%d on the network.\n\n", badge, n)
+				fmt.Fprintf(&b, "\n%s · handle #%d on the network\n", badge, n)
 			} else {
-				fmt.Fprintf(&b, "Handle #%d on the network. /stats for more.\n\n", n)
+				fmt.Fprintf(&b, "\nHandle #%d on the network\n", n)
 			}
 		}
 	}
-	b.WriteString("Publishing to the channel now. Anyone can /resolve it.")
+	b.WriteString("\nNext: /card for your bio line.")
 	return r.reply(in, b.String(), nil)
 }
 
@@ -169,15 +190,15 @@ func (r *Responder) revoke(st *store.Store, in Incoming, arg string) Reply {
 	case !in.Private:
 		return r.dmOnly(in, "revoke")
 	case r.Priv == nil:
-		return r.reply(in, "This node does not register handles, so it has nothing to revoke.", nil)
+		return r.noRegister(in)
 	}
 	f := strings.Fields(arg)
 	if len(f) != 1 {
-		return r.reply(in, "Usage: <code>/revoke name</code>", nil)
+		return r.usage(in, "/revoke name")
 	}
 	handle, err := NormaliseName(f[0])
 	if err != nil {
-		return r.reply(in, "⚠️ "+esc(err.Error())+".", nil)
+		return r.badInput(in, sentence(err.Error()))
 	}
 	user := sender(in)
 	prev, refusal := r.checkOwner(st, handle, user)
@@ -185,57 +206,104 @@ func (r *Responder) revoke(st *store.Store, in Incoming, arg string) Reply {
 	case refusal != "":
 		return r.reply(in, refusal, nil)
 	case prev == nil || prev.Payload.Kind == tlog.KindRevoke:
-		return r.reply(in, "<b>"+handle+"</b> is not registered to you.", nil)
+		return r.reply(in, "⚠️ You do not hold <b>"+handle+"</b> here.", nil)
 	}
 	if _, err := r.sign(st, tlog.KindRevoke, handle, "", prev); err != nil {
-		return r.reply(in, "⚠️ Could not revoke right now. Try again later.", nil)
+		return r.internalError(in, "revoke", err)
 	}
 	delete(st.Custody, handle)
-	_ = st.Save()
+	if err := st.Save(); err != nil {
+		r.logErr("save after revoke", err)
+	}
 	return r.reply(in, "Revoked <b>"+handle+"</b>. It is free for anyone to register.", nil)
 }
 
-// checkOwner decides whether user may write handle through this node. It
-// returns the handle's current entry when this node holds it for user
-// (nil when the handle is free) or a refusal to send instead.
-func (r *Responder) checkOwner(st *store.Store, handle string, user int64) (*tlog.Entry, string) {
-	reg := lookup(st)
-	if owner, ok := st.Custody[handle]; ok && owner != user {
-		return nil, "<b>" + handle + "</b> is taken by another Telegram user."
+func (r *Responder) logErr(op string, err error) {
+	l := r.Log
+	if l == nil {
+		l = slog.Default()
 	}
-	e, status, ok := reg.Resolve(handle)
+	l.Error("bot", "op", op, "err", err)
+}
+
+// sentence capitalises s and ends it with a full stop unless it already
+// ends in punctuation.
+func sentence(s string) string {
+	if s == "" {
+		return s
+	}
+	s = strings.ToUpper(s[:1]) + s[1:]
+	if !strings.HasSuffix(s, ".") && !strings.HasSuffix(s, "…") && !strings.HasSuffix(s, "?") && !strings.HasSuffix(s, "!") {
+		s += "."
+	}
+	return s
+}
+
+// checkOwner decides whether user may write handle through this node,
+// following the network's first-come ownership (issue #15). It returns
+// the handle's current entry when this node holds it for user (nil when
+// the handle is free) or a refusal to send instead. Custody records that
+// no longer match the network (revoked, or swapped away) are dropped.
+func (r *Responder) checkOwner(st *store.Store, handle string, user int64) (*tlog.Entry, string) {
+	o := st.Ownership(handle)
+	cust, custodial := st.Custody[handle]
+	switch {
+	case o.Status == handshake.StateLocked:
+		return nil, "⏳ <b>" + handle + "</b> is locked in a swap. Try again after it closes."
+	case o.Free:
+		if custodial {
+			delete(st.Custody, handle)
+		}
+		return nil, ""
+	case !bytes.Equal(o.Owner, r.pub()):
+		if custodial {
+			delete(st.Custody, handle) // swapped away from this node
+		}
+		return nil, "⚠️ <b>" + handle + "</b> is already registered to another key. /resolve " + handle
+	case !custodial:
+		return nil, "⚠️ <b>" + handle + "</b> is reserved by this node's operator."
+	case cust != user:
+		return nil, "⚠️ <b>" + handle + "</b> is taken by another Telegram user."
+	}
+	e, _, ok := lookupHandle(st, handle)
 	if !ok {
 		return nil, ""
 	}
-	if status == handshake.StateLocked {
-		return nil, "<b>" + handle + "</b> is locked in a swap. Try again later."
-	}
-	mine := bytes.Equal(e.PubKey, r.pub())
-	_, custodial := st.Custody[handle]
-	switch {
-	case mine && custodial:
-		return &e, "" // custody is user's (checked above)
-	case e.Payload.Kind == tlog.KindRevoke:
-		return nil, "" // revoked: free again
-	case mine:
-		return nil, "<b>" + handle + "</b> belongs to this node's operator."
-	}
-	return nil, "<b>" + handle + "</b> is already registered by someone else."
+	return &e, ""
 }
 
-// held counts the handles user holds through this node, other than handle.
-func held(st *store.Store, user int64, handle string) int {
+// held counts the handles user holds through this node, other than
+// handle: custody records whose handle this node's key still owns.
+func held(st *store.Store, node []byte, user int64, handle string) int {
 	n := 0
 	for h, u := range st.Custody {
-		if u == user && h != handle {
+		if u != user || h == handle {
+			continue
+		}
+		if o := st.Ownership(h); !o.Free && bytes.Equal(o.Owner, node) {
 			n++
 		}
 	}
 	return n
 }
 
-// sign appends a node-signed register or revoke entry. Its timestamp is
-// after prev's so it wins last-writer-wins even within one second.
+// heldHandles lists, sorted, the handles user holds through this node.
+func heldHandles(st *store.Store, node []byte, user int64) []string {
+	var out []string
+	for h, u := range st.Custody {
+		if u != user {
+			continue
+		}
+		if o := st.Ownership(h); !o.Free && bytes.Equal(o.Owner, node) && o.Status != handshake.StateLocked {
+			out = append(out, h)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sign appends a node-signed register or revoke entry, timestamped after
+// prev so the owner's update orders after its previous entry.
 func (r *Responder) sign(st *store.Store, kind tlog.Kind, handle, did string, prev *tlog.Entry) (*tlog.Entry, error) {
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
@@ -251,7 +319,9 @@ func (r *Responder) sign(st *store.Store, kind tlog.Kind, handle, did string, pr
 		return nil, err
 	}
 	if !st.AppendEntry(e) {
-		return nil, errors.New("entry rejected by local store")
+		return nil, errRejected
 	}
 	return e, nil
 }
+
+var errRejected = errors.New("entry rejected by local store")

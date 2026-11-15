@@ -16,7 +16,7 @@ import (
 
 // Version is the release version, overridable at build time with
 // -ldflags "-X main.Version=...".
-var Version = "0.2.3"
+var Version = "0.3.0"
 
 const tagline = "decentralised handle registry gossiped over Telegram"
 
@@ -32,6 +32,7 @@ func main() {
 	}
 	dir := envOr("TELEGRAPH_HOME", defaultHome())
 	args := os.Args[2:]
+	setupLogging()
 
 	switch os.Args[1] {
 	case "help", "-h", "--help":
@@ -68,6 +69,10 @@ func main() {
 		doScan(dir, oneArg(`scan "⟁ handle@nym · a1b2c3d4"`, args))
 	case "swap":
 		doSwap(dir, args)
+	case "committee":
+		doCommittee(dir)
+	case "config":
+		doConfig(dir, args)
 	default:
 		errOut.Fail("unknown command %q", os.Args[1])
 		usage(errOut)
@@ -106,6 +111,8 @@ func usage(p *ui.Printer) {
 		{"attest --line L", "sign a card"},
 		{"scan L", "verify a card line"},
 		{"swap STEP", "offer · accept · claim · reclaim · status"},
+		{"committee", "next checkpoint committee and peers"},
+		{"config [key]", "effective node settings (no secrets)"},
 		{"version", "print version"},
 	}
 	p.Printf("%s telegraph <command> [flags]\n\n", p.Bold("usage:"))
@@ -114,8 +121,9 @@ func usage(p *ui.Printer) {
 		rows[i] = []string{p.Cyan(c[0]), p.Dim(c[1])}
 	}
 	p.Table("  ", rows)
-	p.Printf("\n%s TELEGRAPH_HOME TELEGRAPH_BOTS TELEGRAPH_CHANNELS\n     TELEGRAPH_PIN TELEGRAPH_BUS NO_COLOR\n",
-		p.Bold("env:"))
+	p.Printf("\n%s TELEGRAPH_HOME TELEGRAPH_BOTS[_FILE] TELEGRAPH_CHANNELS TELEGRAPH_CHANNEL_URL\n"+
+		"     TELEGRAPH_PEERS TELEGRAPH_BOT_REGISTER TELEGRAPH_LOG_FORMAT TELEGRAPH_PIN TELEGRAPH_BUS NO_COLOR\n"+
+		"     (docs/NODE-OPERATIONS.md)\n", p.Bold("env:"))
 }
 
 // --- helpers ---

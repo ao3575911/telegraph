@@ -7,7 +7,7 @@ import (
 
 func TestStatsAndEarlyAdopterBadge(t *testing.T) {
 	r, st := regResponder(t), memStore()
-	if got := send(t, r, st, 1, "/register first"); !strings.Contains(got, "Founding 100: handle #1") {
+	if got := send(t, r, st, 1, "/register first"); !strings.Contains(got, "Founding 100 · handle #1") {
 		t.Fatalf("first registration lacks badge:\n%s", got)
 	}
 	got := send(t, r, st, 2, "/register second")
