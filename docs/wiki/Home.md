@@ -34,6 +34,6 @@ Install:
 curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh
 ```
 
-Status: pre-1.0 (0.2.2). The protocol and on-disk format may change between minor
+Status: pre-1.0 (0.2.3). The protocol and on-disk format may change between minor
 versions. Known limits are tracked as
 [issues](https://github.com/ao3575911/telegraph/issues).

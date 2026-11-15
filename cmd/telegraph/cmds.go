@@ -51,7 +51,7 @@ func doRegister(dir string, args []string) {
 	_, _ = rand.Read(nonce)
 	e, err := tlog.New(tlog.Payload{
 		Kind: tlog.KindRegister, Handle: *handle, DID: *did,
-		TS: time.Now().Unix(), Nonce: nonce,
+		TS: st.NextTS(pubOf(priv), time.Now().Unix()), Nonce: nonce,
 	}, priv, st.Tip(pubOf(priv)))
 	dieOn(err)
 	appendOwn(st, e)
@@ -76,7 +76,7 @@ func doRevoke(dir string, args []string) {
 	_, _ = rand.Read(nonce)
 	e, err := tlog.New(tlog.Payload{
 		Kind: tlog.KindRevoke, Handle: *handle,
-		TS: time.Now().Unix(), Nonce: nonce,
+		TS: st.NextTS(pubOf(priv), time.Now().Unix()), Nonce: nonce,
 	}, priv, st.Tip(pubOf(priv)))
 	dieOn(err)
 	appendOwn(st, e)
@@ -448,7 +448,7 @@ func doAttest(dir string, args []string) {
 	}
 	priv := mustKey(dir)
 	st := mustStore(dir)
-	e, err := handshake.BuildCard(*line, time.Now().Unix(), priv, st.Tip(pubOf(priv)))
+	e, err := handshake.BuildCard(*line, st.NextTS(pubOf(priv), time.Now().Unix()), priv, st.Tip(pubOf(priv)))
 	dieOn(err)
 	appendOwn(st, e)
 	out.OK("attested card for %s", out.Bold(handle))

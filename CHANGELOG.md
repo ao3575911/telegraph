@@ -6,8 +6,42 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-15
+
+### Fixed
+
+- Same-second entries were folded in hash order, which is effectively
+  random. A register, swap offer and lock signed in one second could put
+  the lock before the register that makes it valid, so about half the time
+  the lock was ignored and `swap accept` failed with `lock … not in force
+  (REGISTERED)` (#17). Entries sharing a second are now ordered by each
+  signer's own chain (an entry follows its PrevHash ancestors), then by
+  hash: deterministic, independent of arrival order, and causal. This also
+  fixes existing logs, and `resolve` picks the newest of a signer's
+  same-second register/revoke by chain order too.
+- Every entry a node signs (register, revoke, card, offer, lock, claim,
+  reclaim, heartbeat, bot `/register`) now gets a timestamp strictly after
+  its signer's previous entry, so one signer never puts two entries in the
+  same second. Nodes on v0.2.2 or earlier, which still order ties by hash,
+  agree with v0.2.3 on everything signed from now on. Upgrade nodes that
+  hold same-second swap history from older releases.
+
+## [0.2.2] - 2026-11-15
+
 ### Added
 
+- `/register name [did]` in a private chat with the bot: the node signs
+  `name@nym` and gossips it to the channel. Registration is custodial (the
+  node's key owns the handle) and off unless the node runs with
+  `--bot-register` or `TELEGRAPH_BOT_REGISTER=1`. Without a DID the handle
+  gets `did:tg:<telegram user id>`, which is public. Without a name the bot
+  asks for one.
+- `/revoke name`: revoke a handle you registered through the bot.
+- The node records which Telegram user each bot-registered handle belongs
+  to (`custody` in `data.json`, never gossiped); only that user can change
+  its DID or revoke it. Handles owned by other keys, by the node operator or
+  by another Telegram user are refused, as are groups. Three handles per
+  Telegram user per node.
 - `/stats` in the bot: active, revoked and total handles, registrars,
   nodes online, swaps, checkpoints, your handles on this node, and how many
   early-adopter spots are left. `/register` now tells you your handle's
@@ -16,6 +50,11 @@ uses [Semantic Versioning](https://semver.org/).
 - `cmd/stress`, a load harness that drives the real packages at 1k to
   10M users, and fuzz targets for frame reassembly, entry decoding and bot
   commands. Results are in `docs/STRESS-REPORT.md`.
+
+### Changed
+
+- `telegraph register` and the bot share one handle rule (one `@`, no
+  spaces, at most 64 characters); the CLI now rejects handles that break it.
 
 ### Fixed
 
@@ -43,28 +82,6 @@ uses [Semantic Versioning](https://semver.org/).
 - Successful signature checks are memoised. Bot lookups no longer
   re-verify the whole log, and the checkpoint audit is cached between log
   changes: `/register` on a 100k-entry node went from 5.7 s to 8.5 ms (p50).
-
-## [0.2.2] - 2026-11-15
-
-### Added
-
-- `/register name [did]` in a private chat with the bot: the node signs
-  `name@nym` and gossips it to the channel. Registration is custodial (the
-  node's key owns the handle) and off unless the node runs with
-  `--bot-register` or `TELEGRAPH_BOT_REGISTER=1`. Without a DID the handle
-  gets `did:tg:<telegram user id>`, which is public. Without a name the bot
-  asks for one.
-- `/revoke name`: revoke a handle you registered through the bot.
-- The node records which Telegram user each bot-registered handle belongs
-  to (`custody` in `data.json`, never gossiped); only that user can change
-  its DID or revoke it. Handles owned by other keys, by the node operator or
-  by another Telegram user are refused, as are groups. Three handles per
-  Telegram user per node.
-
-### Changed
-
-- `telegraph register` and the bot share one handle rule (one `@`, no
-  spaces, at most 64 characters); the CLI now rejects handles that break it.
 
 ## [0.2.1] - 2026-11-15
 
@@ -179,7 +196,9 @@ uses [Semantic Versioning](https://semver.org/).
 - Merge order changed the merged entry order.
 - Auditor panics on short ids in hostile input.
 
-[Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/ao3575911/telegraph/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/ao3575911/telegraph/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/ao3575911/telegraph/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ao3575911/telegraph/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ao3575911/telegraph/releases/tag/v0.1.0
