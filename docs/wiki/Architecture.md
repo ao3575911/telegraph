@@ -1,0 +1,68 @@
+# Architecture
+
+## Entries and logs (`internal/tlog`, `internal/merkle`)
+
+Every action is an entry: register, revoke, checkpoint, heartbeat, swap
+offer, lock, claim, reclaim, or card attestation. An entry carries a
+payload, the issuer's Ed25519 public key, the hash of the issuer's previous
+entry, its own SHA-256 hash and a signature. Each issuer's entries form a
+hash chain, so a missing or reordered entry shows up as a gap.
+
+A Merkle root is computed over the sorted entry hashes, so any two nodes
+holding the same set of entries derive the same root regardless of arrival
+order.
+
+## Registry (`internal/crdt`, `internal/store`)
+
+The registry is a CRDT. Merging is a union of entries de-duplicated by hash
+and applied in hash order, so merge is commutative, associative and
+idempotent. Plain register and revoke entries resolve last-writer-wins.
+The store persists entries in `TELEGRAPH_HOME/data.json` and tracks which
+local entries still need publishing.
+
+## Checkpoints (`internal/checkpoint`)
+
+A checkpoint commits to the Merkle root and count of all entries stamped
+strictly before its timestamp, plus the previous checkpoint's hash.
+
+- **Committee.** The target is `sha256("telegraph/cp/<root>/<count>")`. The
+  three issuer keys closest to the target by symmetric ring distance form
+  the committee, so it rotates with the log and cannot be chosen by any one
+  issuer.
+- **Quorum.** The closest member (the leader) issues; the others co-sign
+  when they sync. A checkpoint is valid with 2 of 3 committee signatures (1
+  of 1 for a single-issuer network). Until then it is held as pending.
+- **Audit.** `telegraph audit` recomputes the root and count, checks the
+  committee and signatures, and walks the checkpoint chain for forks and
+  gaps.
+- **Pins.** A new node trusts only a checkpoint hash shared out of band
+  (`sync --pin`). A dump that does not contain it is rejected as a whole.
+  `pin --rotate` advances the pin to the latest quorum-verified checkpoint.
+
+## Swaps and cards (`internal/handshake`)
+
+Two owners exchange handles HTLC-style. The initiator offers and locks
+their handle under `sha256(preimage)`; the responder locks theirs to the
+initiator with an expiry 48 hours earlier. The initiator claims the
+responder's handle, which reveals the preimage; the responder uses it to
+claim the initiator's handle. If anyone stops, locks can be reclaimed after
+expiry. A lock counts only if its signer owned the handle immediately
+before it.
+
+A bio card is one line, `⟁ handle@nym · <key prefix>`, that the owner signs
+with `attest`. `scan` checks the line against the current owner and reports
+VERIFIED, unattested, or STALE after a transfer.
+
+## Transport (`internal/transport`)
+
+The Telegram transport uses only the Bot API (`getUpdates`, `sendMessage`).
+Entries are framed into messages and posted to every configured channel;
+nodes poll, ingest, co-sign pending checkpoints and send heartbeats.
+`sync --serve` also answers `/dump` requests so new nodes can bootstrap.
+The file bus (`TELEGRAPH_BUS`) implements the same interface on a local
+append-only file for tests and demos.
+
+## CLI (`cmd/telegraph`, `internal/ui`)
+
+One binary with compact output. Colour is used only on a terminal and never
+when `NO_COLOR` is set.

@@ -1,0 +1,8 @@
+title: Telegraph
+description: A decentralised handle registry over Telegram, with signed logs and checkpoint committees.
+theme: jekyll-theme-minimal
+exclude:
+  - demo/*.tape
+  - demo/*.sh
+  - demo/findings.md
+  - wiki

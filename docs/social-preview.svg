@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <rect width="1280" height="640" fill="#0d1117"/>
+  <g transform="translate(560 96)" fill="none" stroke="#3fb6c8" stroke-linejoin="round">
+    <path d="M80 6 L154 154 L6 154 Z" stroke-width="10"/>
+    <path d="M80 86 L107 138 L53 138 Z" stroke-width="8"/>
+  </g>
+  <text x="640" y="364" text-anchor="middle" fill="#e6edf3" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="96" font-weight="600" letter-spacing="12">TELEGRAPH</text>
+  <text x="640" y="428" text-anchor="middle" fill="#8b949e" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="32">Decentralised handle registry gossiped over Telegram</text>
+  <text x="640" y="520" text-anchor="middle" fill="#6e7681" font-family="'DejaVu Sans Mono', Menlo, monospace"
+        font-size="24">signed logs · CRDT merge · 2-of-3 checkpoints · atomic swaps · Go stdlib only</text>
+  <rect x="0" y="632" width="1280" height="8" fill="#3fb6c8" opacity="0.6"/>
+</svg>

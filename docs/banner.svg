@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="280" viewBox="0 0 1280 280" role="img" aria-labelledby="t d">
+  <title id="t">Telegraph</title>
+  <desc id="d">Decentralised handle registry gossiped over Telegram</desc>
+  <rect width="1280" height="280" fill="#0d1117"/>
+  <g transform="translate(96 62)" fill="none" stroke="#3fb6c8" stroke-linejoin="round">
+    <path d="M78 6 L150 150 L6 150 Z" stroke-width="9"/>
+    <path d="M78 84 L104 134 L52 134 Z" stroke-width="7"/>
+  </g>
+  <text x="292" y="150" fill="#e6edf3" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="84" font-weight="600" letter-spacing="10">TELEGRAPH</text>
+  <text x="296" y="202" fill="#8b949e" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="28" letter-spacing="0.5">Decentralised handle registry gossiped over Telegram</text>
+  <rect x="0" y="276" width="1280" height="4" fill="#3fb6c8" opacity="0.6"/>
+</svg>
