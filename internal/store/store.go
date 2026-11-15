@@ -303,11 +303,38 @@ func (s *Store) StageEntry(e *tlog.Entry) bool {
 		s.stagedSet = map[string]bool{}
 	}
 	if s.stagedSet[string(e.Hash)] {
-		return false
+		// a checkpoint is republished as co-signatures accrue (same
+		// hash): keep every valid one, or the staged copy stays short of
+		// quorum and fails the pin check
+		if e.Payload.Kind != tlog.KindCheckpoint {
+			return false
+		}
+		added := false
+		for i := range s.staged {
+			if !bytes.Equal(s.staged[i].Hash, e.Hash) {
+				continue
+			}
+			for _, cs := range e.CoSigs {
+				if tlog.ValidCosig(&s.staged[i], cs) && !hasCosig(s.staged[i].CoSigs, cs.Pub) {
+					s.staged[i].CoSigs = append(s.staged[i].CoSigs, cs)
+					added = true
+				}
+			}
+		}
+		return added
 	}
 	s.stagedSet[string(e.Hash)] = true
 	s.staged = append(s.staged, *e)
 	return true
+}
+
+func hasCosig(cs []tlog.Cosig, pub []byte) bool {
+	for _, c := range cs {
+		if bytes.Equal(c.Pub, pub) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) CommitStage() int {

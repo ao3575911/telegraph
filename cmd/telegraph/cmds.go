@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"flag"
@@ -234,11 +235,12 @@ func doSync(dir string, args []string) {
 	botsStr := fs.String("bots", "", "comma-separated bot tokens (prefer TELEGRAPH_BOTS: flags show in the process list)")
 	chansStr := fs.String("channels", envOr("TELEGRAPH_CHANNELS", ""), "comma-separated channels")
 	bus := fs.String("bus", envOr("TELEGRAPH_BUS", ""), "local file bus instead of Telegram (testing, demos)")
-	pinStr := fs.String("pin", envOr("TELEGRAPH_PIN", ""), "genesis checkpoint pin (first sync)")
+	pinStr := fs.String("pin", envOr("TELEGRAPH_PIN", ""), "trusted checkpoint hash, from an operator out of band (required to join)")
 	cpOnly := fs.Bool("checkpoint-only", false, "attempt one checkpoint then exit")
 	genesis := fs.Bool("genesis", false, "start or join a network that has no checkpoint yet (no pin)")
 	botReg := fs.Bool("bot-register", envOr("TELEGRAPH_BOT_REGISTER", "") == "1",
 		"let Telegram users /register handles, signed by this node's key (custodial)")
+	insecure := fs.Bool("insecure-skip-pin", false, "DANGEROUS: sync without checking the log against a pinned checkpoint")
 	regBotFlag := fs.String("register-bot", "", "without --bot-register: the bot (@username) users are sent to for /register and /card")
 	_ = fs.Parse(args)
 	chURL, err := channelURL()
@@ -277,13 +279,10 @@ func doSync(dir string, args []string) {
 		}
 	}
 	st := mustStore(dir)
-	if *genesis && (st.Pin != "" || *pinStr != "") {
+	if *genesis && *pinStr != "" {
 		die(errors.New("--genesis is for a network with no checkpoint yet: drop it when you have a pin"))
 	}
-	if st.Pin == "" && *pinStr != "" && len(st.Entries) == 0 {
-		st.SetPin(*pinStr)
-		dieOn(st.Save())
-	} else if *pinStr != "" && st.Pin != "" && st.Pin != *pinStr {
+	if *pinStr != "" && st.Pin != "" && st.Pin != *pinStr {
 		die(fmt.Errorf("--pin %s conflicts with local pin %s", short(*pinStr), short(st.Pin)))
 	}
 	priv := mustKey(dir)
@@ -327,10 +326,11 @@ func doSync(dir string, args []string) {
 		})
 		return
 	}
-	if len(st.Entries) == 0 && !*genesis {
-		if st.Pin == "" {
-			die(errors.New("empty store: pass --pin <checkpoint-hash> to bootstrap, or --genesis to start or join a network that has no checkpoint yet"))
-		}
+	trust := checkpoint.TrustOK
+	if *insecure {
+		errOut.Warn("INSECURE: --insecure-skip-pin: merging gossip WITHOUT checking it against a pinned checkpoint")
+		slog.Warn("trust check skipped (--insecure-skip-pin): gossip is not verified against a pin")
+	} else if trust = trustGate(st, priv, *pinStr, *genesis); trust == checkpoint.TrustBootstrap {
 		out.Info("bootstrapping with pin %s…", short(st.Pin))
 		n, err := sy.Bootstrap(*win)
 		dieOn(err)
@@ -345,6 +345,10 @@ func doSync(dir string, args []string) {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		sy.SetupBots()
+		if trust == checkpoint.TrustGenesis {
+			_, err := sy.GenesisSync(*win)
+			dieOn(err)
+		}
 		dieOn(sy.Serve(ctx))
 		slog.Info("node stopped")
 		return
@@ -352,7 +356,12 @@ func doSync(dir string, args []string) {
 	start := time.Now()
 	n, err := sy.PublishPending()
 	dieOn(err)
-	merged, err := sy.PollWindow(*win)
+	var merged int
+	if trust == checkpoint.TrustGenesis {
+		merged, err = sy.GenesisSync(*win)
+	} else {
+		merged, err = sy.PollWindow(*win)
+	}
 	dieOn(err)
 	out.OK("synced  %s published  %s merged  %s", out.Bold(fmt.Sprint(n)),
 		out.Bold(fmt.Sprint(merged)), out.Dim(fmt.Sprintf("%d entries · %.1fs", len(st.Entries), time.Since(start).Seconds())))
@@ -523,4 +532,31 @@ func doScan(dir, line string) {
 		out.Warn("%s UNATTESTED: entry matches, but the owner has not signed this card", out.Bold(h))
 		os.Exit(1)
 	}
+}
+
+// trustGate runs the mandatory trust check before a sync merges gossip
+// (see checkpoint.CheckTrust). It stops the command when the log cannot
+// be checked against a pin, and reports whether to bootstrap first.
+func trustGate(st *store.Store, priv ed25519.PrivateKey, pinFlag string, genesis bool) checkpoint.Trust {
+	pin := st.Pin
+	if pin == "" {
+		pin = pinFlag
+	}
+	if st.Pin != "" && genesis {
+		out.Info("pinned to %s: --genesis ignored", short(st.Pin))
+		genesis = false
+	}
+	t, newPin, err := checkpoint.CheckTrust(st, pubOf(priv), pin, genesis)
+	dieOn(err)
+	if newPin != "" && newPin != st.Pin {
+		st.SetPin(newPin)
+		dieOn(st.Save())
+	}
+	switch t {
+	case checkpoint.TrustAdopted:
+		out.OK("pinned checkpoint %s (this node is on its committee)", out.Cyan(short(newPin)))
+	case checkpoint.TrustGenesis:
+		out.Info("genesis: no checkpoint yet, nothing to check against")
+	}
+	return t
 }

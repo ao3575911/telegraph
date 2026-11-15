@@ -62,10 +62,16 @@ before the checkpoint) rather than breaking the root. Checkpoints without
 - **Audit.** `telegraph audit` recomputes the root and count, checks the
   committee and signatures, and walks the checkpoint chain for forks and
   gaps.
-- **Pins.** A new node trusts only a checkpoint hash shared out of band
-  (`sync --pin`). A dump that does not contain it is rejected as a whole.
-  Nodes of a brand-new network, before any checkpoint exists, use
-  `sync --genesis` instead.
+- **Pins.** A node trusts only a checkpoint hash shared out of band
+  (`sync --pin`). Every `sync` first checks the log against the pin
+  (`checkpoint.CheckTrust`): a store holding only its own entries
+  bootstraps, and a dump that does not contain the pin is rejected as a
+  whole; a store that holds other nodes' entries must already contain the
+  pinned, quorate checkpoint and audit clean, or the sync stops. Nodes of
+  a brand-new network, before any checkpoint exists, use `sync --genesis`;
+  their poll windows are staged, and discarded if they carry a checkpoint
+  whose committee the node is not on. `--insecure-skip-pin` disables the
+  check, loudly.
   `pin --rotate` advances the pin to the latest quorum-verified checkpoint.
 
 ## Swaps and cards (`internal/handshake`)
