@@ -11,10 +11,12 @@ that what it sees matches what everyone else sees.
 - [[CLI reference|CLI-reference]]: every command and flag
 - [[FAQ]]
 - [Telegram bot](https://github.com/ao3575911/telegraph/blob/main/docs/TELEGRAM.md): commands, `/register` and custody
+- [[Run a node|Run-a-node]]: services, multi-node and committee onboarding
 
 Register a handle: DM a node's bot `/register adz` (custodial, the node's
 key owns it), or with your own key run `telegraph init`, then
 `telegraph register --handle adz@nym --did did:key:adz` and `telegraph sync`.
+`/card` returns your bio line (`⟁ adz@nym · 1a2b3c4d`) to tap and copy.
 `/revoke adz` drops a handle you registered through the bot. `/stats`
 shows network counts and how many early-adopter spots are left. The first
 100 handles ever registered get "Founding 100"; handles 101–1000 get
@@ -34,6 +36,6 @@ Install:
 curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh
 ```
 
-Status: pre-1.0 (0.2.3). The protocol and on-disk format may change between minor
+Status: pre-1.0 (0.3.0). The protocol and on-disk format may change between minor
 versions. Known limits are tracked as
 [issues](https://github.com/ao3575911/telegraph/issues).

@@ -55,9 +55,18 @@ publishing 100k entries would take days. The
 has the numbers and the seven bugs it found, now fixed on main: two
 crafted channel posts could crash every node, a failed send was marked
 published and never retried, a flood of 10,000 new chats reset every rate
-limit, and `data.json` was not crash-safe. Two protocol issues remain:
+limit, and `data.json` was not crash-safe. 0.3.0 fixed
 [#15](https://github.com/ao3575911/telegraph/issues/15) (any later
-register can take over a handle) and checkpoints that grow with every user.
+register could take over a handle). Checkpoints that grow with every user
+remain.
+
+**Who owns a handle?**
+Whoever registered it first. After that only the owner's key can change
+its DID, revoke it or swap it; a register from any other key is ignored by
+every node, whatever its timestamp. A revoked handle is free for the next
+register. Handles registered through the bot are owned by that node's key
+and bound to your Telegram account, so only you can change or revoke them
+there.
 
 **How do I install without Go?**
 `curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh`

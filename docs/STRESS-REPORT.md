@@ -78,7 +78,7 @@ File and line numbers refer to main `f8baf9d`.
 | 9 | Design | `internal/handshake/owner.go:40-47` | `Owner` scans the whole log for each lookup: 44 ms at 1M. | Not fixed. P1: per-handle index. |
 | 10 | Design | `internal/transport/register.go:140,185`, `store.go` | Each bot registration rewrites `data.json` twice: 5.4 s each at 1M. | Not fixed. P0: storage engine. |
 | 11 | Medium | `internal/transport/frame.go:69` | A channel member who sees part 0 of an entry can post a fake part 1 first. The real part is dropped as a duplicate, and the entry fails to verify until a `/dump`. | Not fixed. P2: keep alternative chunks per slot and try them on verify failure. |
-| — | Known | `internal/handshake/owner.go` `compute` | [#15](https://github.com/ao3575911/telegraph/issues/15): a later register from any key takes over a handle. | Confirmed by reading the code. This is a protocol change, so it is left to its own PR. |
+| — | Known | `internal/handshake/owner.go` `compute` | [#15](https://github.com/ao3575911/telegraph/issues/15): a later register from any key takes over a handle. | Fixed in 0.3.0: first-come ownership, owner-only updates, backdated takeovers refused at ingest. |
 | — | Known | `docs/demo/simulate.sh` | [#17](https://github.com/ao3575911/telegraph/issues/17): same-second entries can drop a swap lock (Simulation flake). | Not reproduced here: `simulate.sh` gave 66 ok, 0 unexpected. Left open. |
 
 Fuzzing that found nothing:

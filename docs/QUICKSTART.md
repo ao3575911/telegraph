@@ -87,12 +87,14 @@ From Telegram, in a private chat with a node's bot that runs with
 ```text
 /register adz                  # adz@nym, DID did:tg:<your Telegram user id>
 /register adz did:key:z6Mk…    # adz@nym with your own DID
+/card                          # ⟁ adz@nym · 1a2b3c4d, tap to copy into your bio
 /revoke adz
 ```
 
 The node signs the entry with its own key and gossips it, so `adz@nym`
 resolves on every node. That is custodial: the node's key owns the handle,
-and the node lets only your Telegram account change or revoke it. Names are
+and the node lets only your Telegram account change or revoke it. No other
+key can take it over: the first register owns a handle. Names are
 1–32 characters of `a-z 0-9 _ . -`.
 
 From the CLI, the handle is owned by your own key:

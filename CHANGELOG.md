@@ -6,6 +6,82 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - Unreleased
+
+Production readiness. **Protocol change: upgrade every node** (see
+"Changed").
+
+### Changed
+
+- **Handle ownership is first-come** (#15). A handle belongs to the key
+  of its first valid register (in causal order); only that key's register
+  (DID change), revoke or lock counts afterwards. Registers, revokes and
+  locks from other keys are ignored by the fold, whatever their timestamp,
+  so a later key can no longer take a handle over. A revoke by the owner
+  frees the handle for the next register; a swap still moves ownership to
+  the claimant, who is then the owner under the same rule. Nodes also
+  refuse to admit a register from another key dated at or before the
+  owner's tenure began (a backdated takeover). 0.2.x nodes still resolve
+  last-writer-wins and can disagree with 0.3.0 about a handle two keys
+  registered: upgrade all nodes together. The live network had no such
+  conflicts when 0.3.0 was cut.
+- `telegraph register` and `revoke` refuse handles owned by another key or
+  locked in a swap instead of writing entries the network would ignore.
+- The bot's `/register` follows the same rule: it never signs for a handle
+  another key owns, binds custody to the requesting Telegram user before
+  signing, and drops custody records for handles that were revoked or
+  swapped away (they no longer count toward the 3-handle cap).
+- Every bot reply rewritten: concise, current version, consistent errors
+  (`⚠️ Usage: …`, unknown handle with a `/register` hint, `⏳` rate limit,
+  one generic internal-error message). Internal errors are logged, never
+  shown; a panic in a command is caught and answered generically.
+- Without `--bot-register`, `/register`, `/revoke` and `/card` are left out
+  of the command menu and `/help`.
+- Logs are structured (`log/slog`): text by default,
+  `TELEGRAPH_LOG_FORMAT=json` for JSON, `TELEGRAPH_LOG_LEVEL`,
+  `TELEGRAPH_NODE_NAME` on every record; a startup record lists version,
+  node key prefix, channels, peers and settings (never the token).
+- `/resolve` and the bot's ownership checks use a per-handle index instead
+  of scanning the whole log.
+
+### Added
+
+- `/card [name]`: your bio line `⟁ name@nym · 1a2b3c4d` in a code entity,
+  so one tap copies it, for every handle you hold on the node. The node
+  signs a card attestation the first time, so `telegraph scan` reports it
+  VERIFIED. Clear reply when you hold no handle.
+- The channel link is configuration: `TELEGRAPH_CHANNEL_URL`, default
+  `https://t.me/tgraph_net`. `/start`, `/about` and the bot description use
+  it; invite links are refused.
+- The node sets its bot description and short description
+  (`setMyDescription`, `setMyShortDescription`) on start, skipping
+  unchanged ones.
+- Graceful shutdown: SIGTERM/SIGINT abort the long poll, save the store and
+  exit 0.
+- Reboot-safe services (#18): `scripts/install-service.sh` installs a
+  systemd user unit (`scripts/service/telegraph@.service`, restart always
+  with 5 s to 5 min backoff, one instance per node) or a launchd agent, and
+  `scripts/telegraph-supervise.sh` restarts a node with backoff where there
+  is no systemd. Settings and the token come from
+  `~/.config/telegraph/<node>.env` (0600), never unit files or arguments.
+- Multi-node configuration: `TELEGRAPH_BOTS_FILE` (token file, must be
+  0600), `TELEGRAPH_TOKEN_ENV` (name of the token variable),
+  `TELEGRAPH_PEERS` (other committee nodes' keys).
+- `telegraph committee` shows the next checkpoint committee, which member
+  is this node or a peer, and warns when a node is not an issuer yet;
+  `telegraph config [key]` prints settings without secrets, or the node key.
+- `scripts/node-join.sh` and the runbook in `docs/NODE-OPERATIONS.md`
+  onboard a second or third committee node: bootstrap from the pin,
+  register the node's handle so it becomes an issuer, print its key for
+  peers, install the service.
+- `docs/PINNED-POST.md`: a draft pinned post for @tgraph_net.
+
+### Fixed
+
+- Poll recovery is logged once after a failure streak.
+- The Telegram backoff sleep is interruptible, so shutdown never waits out
+  a 35 s long poll.
+
 ## [0.2.3] - 2026-11-15
 
 ### Fixed
@@ -197,6 +273,7 @@ uses [Semantic Versioning](https://semver.org/).
 - Auditor panics on short ids in hostile input.
 
 [Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.2.3...HEAD
+[0.3.0]: https://github.com/ao3575911/telegraph/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/ao3575911/telegraph/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/ao3575911/telegraph/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/ao3575911/telegraph/compare/v0.2.0...v0.2.1
