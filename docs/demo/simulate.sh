@@ -39,7 +39,7 @@ step ok alice register --handle alice@nym --did did:key:alice
 step ok bob register --handle bob@nym --did did:key:bob
 step ok carol register --handle carol@nym --did did:key:carol
 step err carol register --handle x@nym
-for n in alice bob carol alice bob carol; do step ok $n sync --secs 0; done
+for n in alice bob carol alice bob carol; do step ok $n sync --secs 0 --genesis; done
 SYNC1="alice $(entries alice) · bob $(entries bob) · carol $(entries carol)"
 step ok alice resolve bob@nym
 step err bob register --handle alice@nym --did did:key:mallory
@@ -50,7 +50,7 @@ for n in alice bob carol; do
 	case $LAST_OUT in *issued*) LEADER=$n ;; esac
 done
 step ok "${LEADER:-alice}" checkpoint
-for n in alice bob carol alice bob carol; do step ok $n sync --secs 0; done
+for n in alice bob carol alice bob carol; do step ok $n sync --secs 0 --genesis; done
 step ok alice audit
 step ok bob audit
 step ok carol audit
@@ -64,19 +64,19 @@ step ok alice card --handle alice@nym
 LINE=$(alice card --handle alice@nym | head -1)
 step err carol scan "$LINE"
 step ok alice attest --line "$LINE"
-for n in alice carol; do step ok $n sync --secs 0; done
+for n in alice carol; do step ok $n sync --secs 0 --genesis; done
 step ok carol scan "$LINE"
 step ok alice swap offer --gives alice@nym --wants bob@nym --hours 1
 SID=$(printf '%s\n' "$LAST_OUT" | awk '/swap id/{print $3}')
 step err bob swap claim --sid "$SID"
-for n in alice bob; do step ok $n sync --secs 0; done
+for n in alice bob; do step ok $n sync --secs 0 --genesis; done
 step ok bob swap accept --sid "$SID"
-for n in bob alice; do step ok $n sync --secs 0; done
+for n in bob alice; do step ok $n sync --secs 0 --genesis; done
 step ok alice swap claim --sid "$SID"
-for n in alice bob; do step ok $n sync --secs 0; done
+for n in alice bob; do step ok $n sync --secs 0 --genesis; done
 step ok bob swap claim --sid "$SID"
 step err alice swap reclaim --sid "$SID"
-for n in bob alice bob carol alice; do step ok $n sync --secs 0; done
+for n in bob alice bob carol alice; do step ok $n sync --secs 0 --genesis; done
 step ok carol swap status --sid "$SID"
 step ok carol resolve alice@nym
 step ok carol resolve bob@nym
@@ -90,7 +90,10 @@ KEY_B=$(bob init | awk '$1=="key"{print $2}' | tr -d '…')
 dave() { TELEGRAPH_HOME="$TG_DEMO/dave" telegraph "$@"; }
 step err dave resolve alice@nym
 step ok dave init
-alice sync --secs 3 >/dev/null 2>&1 &
+step ok dave register --handle dave@nym --did did:key:dave # README order: register before joining
+step err dave sync --secs 0 # no pin: refuses to merge unchecked gossip
+step err dave sync --secs 0 --genesis # the network has a checkpoint: --genesis no longer applies
+alice sync --secs 3 --genesis >/dev/null 2>&1 &
 step ok dave sync --secs 2 --pin "$PIN"
 FRESH=$LAST_OUT
 wait
@@ -132,7 +135,8 @@ Three nodes (alice, bob, carol) ran as separate processes with separate
 \`--did\`, scanning a card before it is attested, claiming before the
 counterparty has locked, reclaiming before expiry, using a node before
 \`init\`, scanning a card issued before its handle was swapped (STALE),
-syncing an empty store with neither \`--pin\` nor \`--genesis\`, and
+syncing with neither \`--pin\` nor \`--genesis\` (even after registering
+first), \`--genesis\` on a network that already has a checkpoint, and
 combining \`--genesis\` with a pin.
 
 ## Steps

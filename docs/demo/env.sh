@@ -17,7 +17,7 @@ carol() { TELEGRAPH_HOME="$TG_DEMO/carol" telegraph "$@"; }
 # sync-all: two gossip rounds across all nodes, one summary line.
 sync-all() {
 	local n
-	for n in alice bob carol alice bob carol; do $n sync --secs 0 >/dev/null || return 1; done
+	for n in alice bob carol alice bob carol; do $n sync --secs 0 --genesis >/dev/null || return 1; done
 	printf '↻ synced  '
 	for n in alice bob carol; do
 		printf '%s %s  ' "$n" "$(grep -c '"ha"' "$TG_DEMO/$n/data.json")"

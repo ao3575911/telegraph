@@ -426,10 +426,12 @@ func (s *Syncer) IssueHeartbeat() error {
 }
 
 // Bootstrap: request /dump everywhere, stage the window, commit iff the
-// pin verdict passes. Fresh stores only.
+// pin verdict passes. Fresh stores only: nothing from other nodes yet
+// (this node's own entries, e.g. a register made before joining, are
+// fine and stay pending until the next sync publishes them).
 func (s *Syncer) Bootstrap(winSec int) (int, error) {
-	if len(s.Store.Entries) > 0 {
-		return 0, errors.New("bootstrap only valid on an empty store")
+	if checkpoint.HasForeign(s.Store.Entries, s.pub()) {
+		return 0, errors.New("bootstrap only valid on a store with no other nodes' entries")
 	}
 	for _, b := range s.Bots {
 		for _, ch := range s.Channels {
@@ -438,29 +440,7 @@ func (s *Syncer) Bootstrap(winSec int) (int, error) {
 			}
 		}
 	}
-	s.staging = true
-	s.Store.BeginStage()
-	defer func() { s.staging = false }()
-	merged, deadline := 0, nowSec()+int64(winSec)
-	for {
-		for _, b := range s.Bots {
-			ups, err := b.Poll(PollTimeout)
-			if err != nil {
-				s.logf("poll: %v", err)
-				continue
-			}
-			for _, u := range ups {
-				if ok, err := s.handleUpdate(b, u); err != nil {
-					s.logf("update: %v", err)
-				} else if ok {
-					merged++
-				}
-			}
-		}
-		if nowSec() >= deadline {
-			break
-		}
-	}
+	s.pollStaged(winSec)
 	staged := s.Store.Staged()
 	if len(staged) == 0 {
 		return 0, errors.New("no dump received — no serving peers reachable")
@@ -473,6 +453,57 @@ func (s *Syncer) Bootstrap(winSec int) (int, error) {
 	n := s.Store.CommitStage()
 	s.Store.Save()
 	return n, nil
+}
+
+// pollStaged polls for winSec with incoming entries staged, not merged.
+func (s *Syncer) pollStaged(winSec int) {
+	s.staging = true
+	s.Store.BeginStage()
+	defer func() { s.staging = false }()
+	deadline := nowSec() + int64(winSec)
+	for {
+		for _, b := range s.Bots {
+			ups, err := b.Poll(PollTimeout)
+			if err != nil {
+				s.logf("poll: %v", err)
+				continue
+			}
+			for _, u := range ups {
+				if _, err := s.handleUpdate(b, u); err != nil {
+					s.logf("update: %v", err)
+				}
+			}
+		}
+		if nowSec() >= deadline {
+			return
+		}
+	}
+}
+
+// ErrGenesisHasCP: a --genesis sync received a quorate checkpoint whose
+// committee this node is not on. The network is past genesis, so joining
+// it needs a pin; nothing was merged.
+var ErrGenesisHasCP = errors.New("--genesis: this network already has a checkpoint and this node is not on its committee; nothing merged: get the pin from an operator and pass --pin")
+
+// GenesisSync merges one poll window for a node with no pin (--genesis).
+// Entries are staged first: if they include a checkpoint (quorate or
+// awaiting co-signatures) this node is not on the committee of, the network is past genesis and the
+// window is discarded, so --genesis cannot be used to skip the pin.
+func (s *Syncer) GenesisSync(winSec int) (int, error) {
+	s.pollStaged(winSec)
+	for _, e := range s.Store.Staged() {
+		if e.Payload.Kind != tlog.KindCheckpoint || len(e.Payload.Comm) == 0 ||
+			checkpoint.InCommittee(e.Payload.Comm, s.pub()) {
+			continue
+		}
+		if err := e.Verify(); err == nil || tlog.IsPendingQuorum(err) {
+			s.Store.RollbackStage()
+			return 0, ErrGenesisHasCP
+		}
+	}
+	n := s.Store.CommitStage()
+	s.MaybeCoSign()
+	return n, s.Store.Save()
 }
 
 // Serve publishes, then polls, checkpoints, heartbeats and self-heals

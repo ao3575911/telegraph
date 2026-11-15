@@ -77,3 +77,42 @@ func TestConcurrentRegisterConverges(t *testing.T) {
 		}
 	}
 }
+
+// --genesis cannot skip the pin: a node whose window carries a checkpoint
+// it is not on the committee of merges nothing.
+func TestGenesisSyncRefusesPastGenesis(t *testing.T) {
+	dir := t.TempDir()
+	bus := filepath.Join(dir, "bus.jsonl")
+	a, b := newNode(t, dir, bus, "a"), newNode(t, dir, bus, "b")
+	past := time.Now().Unix() - 120
+	a.register(t, "a@nym", past)
+	b.register(t, "b@nym", past+1)
+	for round := 0; round < 2; round++ {
+		a.sync(t)
+		b.sync(t)
+	}
+	for _, n := range []*node{a, b} {
+		_, err := n.sy.IssueCheckpoint()
+		dieOnT(t, err)
+	}
+	for round := 0; round < 2; round++ {
+		a.sync(t)
+		b.sync(t)
+	}
+	c := newNode(t, dir, bus, "c")
+	c.register(t, "c@nym", past+2)
+	if _, err := c.sy.GenesisSync(0); err != ErrGenesisHasCP {
+		t.Fatalf("GenesisSync past genesis: %v", err)
+	}
+	if len(c.st.Entries) != 1 {
+		t.Fatalf("refused window merged %d entries", len(c.st.Entries)-1)
+	}
+	// before any checkpoint, a genesis window merges normally
+	d, e := newNode(t, dir, filepath.Join(dir, "bus2"), "d"), newNode(t, dir, filepath.Join(dir, "bus2"), "e")
+	d.register(t, "d@nym", past)
+	_, err := d.sy.PublishPending()
+	dieOnT(t, err)
+	if n, err := e.sy.GenesisSync(0); err != nil || n != 1 {
+		t.Fatalf("genesis window: %d %v", n, err)
+	}
+}

@@ -28,6 +28,20 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The pin check is mandatory.** Following the README in order (`init`,
+  `register`, then `sync`) skipped the trust check: it ran only on an
+  empty store, so a node that registered first merged whatever the
+  channel sent, unchecked. Every `sync` (and `sync --serve`) now checks
+  the log against the pin first: a store holding only its own entries
+  bootstraps with `--pin`; one holding other nodes' entries must contain
+  the pinned, quorate checkpoint and audit clean; with no pin, `sync`
+  stops. `--genesis` stages its window and merges nothing if it carries a
+  checkpoint whose committee this node is not on; a node on the first
+  committee pins that checkpoint automatically, and `--genesis` is ignored
+  once a pin is set. New `--insecure-skip-pin` turns the check off with a
+  warning on every run. A staged checkpoint now keeps co-signatures that
+  arrive in later copies. README, quickstart and wiki: join with `--pin`
+  first, then register.
 - **Duplicate handles no longer split the network (protocol change:
   upgrade every node together).** When two nodes registered the same
   handle before syncing, each refused the other's register as a

@@ -132,3 +132,25 @@ func TestNextTSStrictlyIncreases(t *testing.T) {
 		t.Fatalf("other signer: got %d, want 100", got)
 	}
 }
+
+// A checkpoint staged twice (republished with more co-signatures) keeps
+// every valid co-signature, so a bootstrap sees it quorate.
+func TestStageMergesCosigs(t *testing.T) {
+	pa, a := key(t)
+	pb, b := key(t)
+	cp, _ := tlog.New(tlog.Payload{Kind: tlog.KindCheckpoint, TS: 10, Comm: [][]byte{pa, pb}, Nonce: []byte{1}}, a, nil)
+	st := mem()
+	st.BeginStage()
+	if !st.StageEntry(cp) {
+		t.Fatal("first copy not staged")
+	}
+	signed := *cp
+	cs, _ := tlog.CoSign(cp, b)
+	signed.CoSigs = []tlog.Cosig{cs}
+	if !st.StageEntry(&signed) || st.StageEntry(&signed) {
+		t.Fatal("co-signature not merged exactly once")
+	}
+	if s := st.Staged(); len(s) != 1 || s[0].Verify() != nil {
+		t.Fatal("staged checkpoint not quorate")
+	}
+}
