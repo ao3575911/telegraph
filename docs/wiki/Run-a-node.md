@@ -17,6 +17,8 @@ macOS gets a launchd agent from the same script; hosts without systemd use
 
 To add a committee node: create its own bot, add it to
 [@tgraph_net](https://t.me/tgraph_net) as an admin, then
+set `TELEGRAPH_COMMITTEE` in its env file to the network's current list
+(required: a node will not sync over Telegram without it), then run
 `sh scripts/node-join.sh node2 <pin> node2`. It bootstraps from the pin,
 registers `node2@nym` so the node key becomes an issuer (only issuers can
 sit on the checkpoint committee), and installs the service. Add its key

@@ -28,6 +28,8 @@ TELEGRAPH_CHANNELS=-1004305320319
 TELEGRAPH_CHANNEL_URL=https://t.me/tgraph_net
 # Other committee nodes' public keys (telegraph config shows yours), comma-separated
 TELEGRAPH_PEERS=
+# Required: the network's committee keys, the same list on every node
+TELEGRAPH_COMMITTEE=
 TELEGRAPH_BOT_REGISTER=0
 # With registration off: the bot users are sent to for /register and /card
 TELEGRAPH_REGISTER_BOT=@dsmdioefncoedcbot

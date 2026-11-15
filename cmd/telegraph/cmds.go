@@ -315,6 +315,7 @@ func doSync(dir string, args []string) {
 	dieOn(err)
 	peers, err := peerKeys()
 	dieOn(err)
+	dieOn(requireCommittee(*bus != ""))
 
 	var conns []transport.Conn
 	tokenSrc := ""
@@ -408,9 +409,6 @@ func doSync(dir string, args []string) {
 		slog.Info("node starting", "version", Version, "key", short(fmt.Sprintf("%x", pubOf(priv))),
 			"entries", len(st.Entries), "channels", len(channels), "bots", len(conns),
 			"tokens", tokenSrc, "peers", len(peers), "bot_register", *botReg, "register_bot", regBot, "channel_url", chURL)
-		if !tlog.CommitteeSet() {
-			slog.Warn("TELEGRAPH_COMMITTEE unset: any key that writes an entry can join the checkpoint committee")
-		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		sy.SetupBots()

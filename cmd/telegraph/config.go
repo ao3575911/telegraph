@@ -28,7 +28,8 @@ import (
 //	TELEGRAPH_CHANNEL_URL  public channel link for bot buttons
 //	TELEGRAPH_PEERS        hex public keys of the other committee nodes
 //	TELEGRAPH_COMMITTEE    hex public keys allowed on a checkpoint committee,
-//	                       identical on every node (unset: any issuer; unsafe)
+//	                       identical on every node; required to sync over
+//	                       Telegram (only the local test bus runs without it)
 //	TELEGRAPH_NODE_NAME    label for logs
 //	TELEGRAPH_BOT_REGISTER 1: let Telegram users /register (custodial)
 //	TELEGRAPH_REGISTER_BOT on a node without bot registration, the bot
@@ -109,6 +110,26 @@ func hexKeys(name string) ([][]byte, error) {
 // no allowlist.
 func committeeKeys() ([][]byte, error) {
 	return hexKeys("TELEGRAPH_COMMITTEE")
+}
+
+// errNoCommittee: a node syncs over Telegram with no TELEGRAPH_COMMITTEE.
+var errNoCommittee = errors.New("TELEGRAPH_COMMITTEE is required: set it to the hex public keys of the " +
+	"checkpoint committee, comma-separated and identical on every node (`telegraph config key` prints " +
+	"each node's key; a joining node starts with the network's current list). Without it any key that " +
+	"writes an entry could sign checkpoints")
+
+// requireCommittee refuses to sync, serve or checkpoint over Telegram
+// without the committee allowlist (since 0.3.1). The local file bus
+// (TELEGRAPH_BUS, demos and tests) may run without one, with a warning.
+func requireCommittee(localBus bool) error {
+	if tlog.CommitteeSet() {
+		return nil
+	}
+	if localBus {
+		slog.Warn("TELEGRAPH_COMMITTEE unset: allowed on the local bus only; any key that writes an entry can join the checkpoint committee")
+		return nil
+	}
+	return errNoCommittee
 }
 
 // setupLogging installs a slog handler as the default logger, so the

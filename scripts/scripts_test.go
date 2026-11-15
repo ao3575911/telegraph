@@ -70,7 +70,7 @@ esac
 
 func envFile(t *testing.T, home, node, extra string) string {
 	path := filepath.Join(home, ".config", "telegraph", node+".env")
-	write(t, path, "TELEGRAPH_HOME="+filepath.Join(home, "th-"+node)+"\nTELEGRAPH_BOTS=123:test\n"+extra, 0o600)
+	write(t, path, "TELEGRAPH_HOME="+filepath.Join(home, "th-"+node)+"\nTELEGRAPH_BOTS=123:test\nTELEGRAPH_COMMITTEE="+strings.Repeat("cd", 32)+"\n"+extra, 0o600)
 	return path
 }
 

@@ -77,7 +77,7 @@ there.
 downloads the release for your OS, checks its SHA-256 and installs it to
 `~/.local/bin`. With Go, `go install …/cmd/telegraph@latest` takes the
 newest tag (the module proxy can take a little while to see a brand-new
-one); pin a version such as `@v0.3.0` for a reproducible install. Every
+one); pin a version such as `@v0.3.1` for a reproducible install. Every
 node of a network must run a compatible version.
 
 **Can a swap leave one side without a handle?**

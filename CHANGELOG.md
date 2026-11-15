@@ -6,6 +6,21 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-16
+
+**Protocol-affecting: upgrade every node together, with the same
+`TELEGRAPH_COMMITTEE` on each.**
+
+### Changed
+
+- **`TELEGRAPH_COMMITTEE` is required.** `sync`, `sync --serve` and
+  `checkpoint` over Telegram exit with an error that names the setting
+  when it is unset, before they touch the network. Only the local test bus
+  (`TELEGRAPH_BUS`: demos and tests) still runs without one, and logs a
+  warning. Without the allowlist, any key that wrote one entry could sign
+  checkpoints. A joining node starts with the network's current list;
+  then add its key to the list on every node.
+
 ### Added
 
 - CLI: every command has its own help (`telegraph <command> -h`, or
@@ -102,7 +117,7 @@ uses [Semantic Versioning](https://semver.org/).
   on `PATH`. They now use it, and the systemd unit reads it per node.
   `install-service.sh` also no longer fails when `$USER` is unset.
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-11-15
 
 Production readiness. **Protocol change: upgrade every node** (see
 "Changed").
@@ -368,7 +383,8 @@ Production readiness. **Protocol change: upgrade every node** (see
 - Merge order changed the merged entry order.
 - Auditor panics on short ids in hostile input.
 
-[Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/ao3575911/telegraph/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/ao3575911/telegraph/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/ao3575911/telegraph/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/ao3575911/telegraph/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/ao3575911/telegraph/compare/v0.2.1...v0.2.2
