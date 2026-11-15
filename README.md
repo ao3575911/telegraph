@@ -43,7 +43,7 @@ telegraph version
 ```
 
 **Go 1.22+** (the newest tag; for a reproducible install pin one, e.g.
-`@v0.3.0`, and run the same version on every node of a network):
+`@v0.3.1`, and run the same version on every node of a network):
 
 ```sh
 go install github.com/ao3575911/telegraph/cmd/telegraph@latest
@@ -184,7 +184,7 @@ vhs docs/demo/main.tape               # re-record a demo (charmbracelet/vhs)
 
 ## Status
 
-Pre-1.0 (0.3.0). The protocol and on-disk format may change. Known limits
+Pre-1.0 (0.3.1). The protocol and on-disk format may change. Known limits
 are listed in the [usage report](docs/USAGE-REPORT.md#open-issues).
 
 ## Licence

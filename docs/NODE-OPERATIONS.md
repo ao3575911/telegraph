@@ -15,7 +15,7 @@ TELEGRAPH_BOTS=<token from @BotFather>      # this node's own bot; never share i
 TELEGRAPH_CHANNELS=-1004305320319           # gossip channel (@tgraph_net)
 TELEGRAPH_CHANNEL_URL=https://t.me/tgraph_net
 TELEGRAPH_PEERS=<hex key of node2>,<hex key of node3>
-TELEGRAPH_COMMITTEE=<key of node1>,<key of node2>,<key of node3>  # same list on every node
+TELEGRAPH_COMMITTEE=<key of node1>,<key of node2>,<key of node3>  # required; same list on every node
 TELEGRAPH_BOT_REGISTER=1                    # 1 on the node that registers for Telegram users
 # TELEGRAPH_REGISTER_BOT=@dsmdioefncoedcbot # on other nodes: where /register sends users
 TELEGRAPH_LOG_FORMAT=text                   # or json
@@ -30,7 +30,7 @@ TELEGRAPH_LOG_FORMAT=text                   # or json
 | `TELEGRAPH_CHANNELS` | Channel id(s) or `@username`(s) to gossip on. All nodes of a network share them. |
 | `TELEGRAPH_CHANNEL_URL` | Public link on the bot's Channel button and description. Invite links (`t.me/+…`) are refused. |
 | `TELEGRAPH_PEERS` | The other committee nodes' public keys (`telegraph config key` on each). Used by `telegraph committee` and startup logs; membership itself is decided by the protocol (below). |
-| `TELEGRAPH_COMMITTEE` | Public keys allowed on the checkpoint committee, comma-separated. **Set it, identically, on every node.** Unset, any key that writes one entry can be picked (unsafe; the node logs a warning). See below. |
+| `TELEGRAPH_COMMITTEE` | Public keys allowed on the checkpoint committee, comma-separated. **Required** (since 0.3.1): `sync`, `sync --serve` and `checkpoint` over Telegram refuse to start without it. Set it identically on every node. Only the local test bus (`TELEGRAPH_BUS`) runs without it. See below. |
 | `TELEGRAPH_BOT_REGISTER` | `1` lets Telegram users `/register` through this node (custodial). |
 | `TELEGRAPH_REGISTER_BOT` | On a node with registration off: the bot (`@username`) that `/register`, `/card`, the command menu and the bot description point users to, e.g. `@dsmdioefncoedcbot` (node 1). Ignored when `TELEGRAPH_BOT_REGISTER=1`. Same as `--register-bot`. |
 | `TELEGRAPH_LOG_FORMAT`, `TELEGRAPH_LOG_LEVEL` | `text`/`json`; `debug`/`info`/`warn`/`error`. Logs go to stderr (the journal under systemd). |
@@ -126,8 +126,9 @@ serving.
 An issuer is a key that has signed a register or other non-heartbeat
 entry **and** is on the `TELEGRAPH_COMMITTEE` allowlist. Without the
 allowlist, any key that writes a single entry (for example anyone who
-registers a handle from the CLI) is an issuer and can end up signing
-checkpoints. With it:
+registers a handle from the CLI) would be an issuer and could end up
+signing checkpoints, so since 0.3.1 a node refuses to sync over Telegram
+without it. With it:
 
 - only listed keys are picked for a committee, so nodes agree on the
   committee from the same list and log;
@@ -161,7 +162,8 @@ for the node's own handle.
 3. **Env file.** `sh scripts/node-join.sh node2 <pin> node2` writes
    `~/.config/telegraph/node2.env` and stops. Edit it: set `TELEGRAPH_BOTS`
    to the new token, `TELEGRAPH_PEERS` to node 1's key (`telegraph config key`
-   on node 1), keep `TELEGRAPH_BOT_REGISTER=0` unless this node should also
+   on node 1), `TELEGRAPH_COMMITTEE` to the network's current list (copy it
+   from node 1's env file; the node will not sync without it), keep `TELEGRAPH_BOT_REGISTER=0` unless this node should also
    register for Telegram users, and set `TELEGRAPH_REGISTER_BOT` to node 1's
    bot so `/register` on this bot points users there.
 4. **Join.** Run `sh scripts/node-join.sh node2 <pin> node2 [did]` again. It
@@ -182,12 +184,16 @@ token, and `install-service.sh node1` / `install-service.sh node2`.
 
 ## Upgrading
 
+0.3.1 makes `TELEGRAPH_COMMITTEE` required: add the same list to every
+node's env file before upgrading, or the node exits at start with
+`TELEGRAPH_COMMITTEE is required`.
+
 0.3.0 changes how handles resolve (first-come ownership, #15). Upgrade
 every node: a 0.2.x node still resolves last-writer-wins and can disagree
 with 0.3.0 nodes about a handle that two keys registered.
 
 ```sh
 cp -a "$TELEGRAPH_HOME" "$TELEGRAPH_HOME.bak-$(date +%Y%m%d-%H%M)"
-go install github.com/ao3575911/telegraph/cmd/telegraph@v0.3.0
+go install github.com/ao3575911/telegraph/cmd/telegraph@v0.3.1
 systemctl --user restart telegraph@node1
 ```

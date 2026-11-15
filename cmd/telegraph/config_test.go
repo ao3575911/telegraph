@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ao3575911/telegraph/internal/tlog"
 )
 
 func TestChannelURLRejectsInviteLinks(t *testing.T) {
@@ -86,5 +88,20 @@ func TestRegisterBot(t *testing.T) {
 	t.Setenv("TELEGRAPH_REGISTER_BOT", "envbot")
 	if got, _ := registerBot("@flagbot"); got != "flagbot" {
 		t.Errorf("flag did not win over env: %q", got)
+	}
+}
+
+func TestRequireCommittee(t *testing.T) {
+	defer tlog.SetCommittee(nil)
+	tlog.SetCommittee(nil)
+	if err := requireCommittee(false); err != errNoCommittee {
+		t.Fatalf("Telegram without a committee: err %v", err)
+	}
+	if err := requireCommittee(true); err != nil {
+		t.Fatalf("local bus without a committee: err %v", err)
+	}
+	tlog.SetCommittee([][]byte{make([]byte, 32)})
+	if err := requireCommittee(false); err != nil {
+		t.Fatalf("with a committee: err %v", err)
 	}
 }

@@ -40,6 +40,7 @@ export GODEBUG="${GODEBUG:-http2client=0}"
 bin=${TELEGRAPH_BIN:-$(command -v telegraph || echo "$HOME/go/bin/telegraph")}
 [ -x "$bin" ] || { echo "telegraph not found at $bin: set TELEGRAPH_BIN in $envfile or go install github.com/ao3575911/telegraph/cmd/telegraph@latest" >&2; exit 1; }
 [ -n "${TELEGRAPH_BOTS:-}${TELEGRAPH_BOTS_FILE:-}" ] || { echo "add the bot token to $envfile first" >&2; exit 1; }
+[ -n "${TELEGRAPH_COMMITTEE:-}" ] || { echo "set TELEGRAPH_COMMITTEE in $envfile to the network's committee keys (from node 1's env file) first" >&2; exit 1; }
 
 "$bin" init >/dev/null
 if ! grep -q '"entries":\[{' "${TELEGRAPH_HOME:?set TELEGRAPH_HOME in $envfile}/data.json"; then
@@ -56,7 +57,7 @@ echo "== publishing"
 "$bin" sync --secs 10
 "$bin" committee || true
 echo
-echo "Node key (add to TELEGRAPH_PEERS on every other node, comma-separated):"
+echo "Node key (add to TELEGRAPH_PEERS on every other node and to TELEGRAPH_COMMITTEE on every node, comma-separated):"
 "$bin" config key
 echo
 sh "$here/install-service.sh" "$node"
