@@ -15,6 +15,7 @@ TELEGRAPH_BOTS=<token from @BotFather>      # this node's own bot; never share i
 TELEGRAPH_CHANNELS=-1004305320319           # gossip channel (@tgraph_net)
 TELEGRAPH_CHANNEL_URL=https://t.me/tgraph_net
 TELEGRAPH_PEERS=<hex key of node2>,<hex key of node3>
+TELEGRAPH_COMMITTEE=<key of node1>,<key of node2>,<key of node3>  # same list on every node
 TELEGRAPH_BOT_REGISTER=1                    # 1 on the node that registers for Telegram users
 # TELEGRAPH_REGISTER_BOT=@dsmdioefncoedcbot # on other nodes: where /register sends users
 TELEGRAPH_LOG_FORMAT=text                   # or json
@@ -29,6 +30,7 @@ TELEGRAPH_LOG_FORMAT=text                   # or json
 | `TELEGRAPH_CHANNELS` | Channel id(s) or `@username`(s) to gossip on. All nodes of a network share them. |
 | `TELEGRAPH_CHANNEL_URL` | Public link on the bot's Channel button and description. Invite links (`t.me/+…`) are refused. |
 | `TELEGRAPH_PEERS` | The other committee nodes' public keys (`telegraph config key` on each). Used by `telegraph committee` and startup logs; membership itself is decided by the protocol (below). |
+| `TELEGRAPH_COMMITTEE` | Public keys allowed on the checkpoint committee, comma-separated. **Set it, identically, on every node.** Unset, any key that writes one entry can be picked (unsafe; the node logs a warning). See below. |
 | `TELEGRAPH_BOT_REGISTER` | `1` lets Telegram users `/register` through this node (custodial). |
 | `TELEGRAPH_REGISTER_BOT` | On a node with registration off: the bot (`@username`) that `/register`, `/card`, the command menu and the bot description point users to, e.g. `@dsmdioefncoedcbot` (node 1). Ignored when `TELEGRAPH_BOT_REGISTER=1`. Same as `--register-bot`. |
 | `TELEGRAPH_LOG_FORMAT`, `TELEGRAPH_LOG_LEVEL` | `text`/`json`; `debug`/`info`/`warn`/`error`. Logs go to stderr (the journal under systemd). |
@@ -111,13 +113,31 @@ Back up `TELEGRAPH_HOME` (`identity.key` and `data.json`) before upgrades.
 
 ## The checkpoint committee
 
-Checkpoints need signatures from a committee: the three **issuers** (keys
-that have signed a register or other non-heartbeat entry) closest to a
-target derived from the log. With two issuers the committee has two members
-and both must sign; from three on, any two of the three. Membership cannot
-be configured, only earned: a node becomes an issuer by registering a
-handle with its own key. A committee member co-signs pending checkpoints
-automatically while serving.
+Checkpoints need signatures from a committee: the three **issuers**
+closest to a target derived from the log. With two issuers the committee
+has two members and both must sign; from three on, any two of the three.
+A committee member co-signs pending checkpoints automatically while
+serving.
+
+An issuer is a key that has signed a register or other non-heartbeat
+entry **and** is on the `TELEGRAPH_COMMITTEE` allowlist. Without the
+allowlist, any key that writes a single entry (for example anyone who
+registers a handle from the CLI) is an issuer and can end up signing
+checkpoints. With it:
+
+- only listed keys are picked for a committee, so nodes agree on the
+  committee from the same list and log;
+- a checkpoint that names or is signed by any other key is still kept
+  (it is part of its signer's chain) but attests nothing: it never becomes
+  the latest checkpoint, a pin, or a witness that finalises a handle, and
+  `telegraph audit` counts it as "off the committee allowlist";
+- checkpoints made before the list was set stay valid as long as their
+  committee is within it.
+
+The list is configuration consensus, like the pin: every node must use the
+same one, and changing it (adding node 4, removing a key) means updating
+every node's env file and restarting them together. A listed node still
+needs to have registered a handle to be an issuer.
 
 `telegraph committee` shows the current committee, which member is this
 node or a configured peer, and warns when this node or a peer is not an
@@ -145,8 +165,9 @@ for the node's own handle.
    history that leads to the pin), registers `node2@nym` with the node key
    (making it an issuer), publishes, shows `telegraph committee`, prints the
    node key, and installs the service.
-5. **Peers.** Add the printed key to `TELEGRAPH_PEERS` on node 1 (and every
-   other node), then restart them (`systemctl --user restart telegraph@node1`,
+5. **Peers and committee.** Add the printed key to `TELEGRAPH_PEERS` on
+   node 1 (and every other node) and to `TELEGRAPH_COMMITTEE` on every node,
+   including the new one, then restart them together (`systemctl --user restart telegraph@node1`,
    or restart the supervisor).
 6. **Check.** After the next checkpoint (leader due 6 h after the oldest
    unchecked entry), `/status` shows `signatures 2 of 2` (or `2 of 3`), and

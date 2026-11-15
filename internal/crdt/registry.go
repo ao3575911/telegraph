@@ -26,7 +26,7 @@ func New() *Registry {
 func FromEntries(es []tlog.Entry) (*Registry, error) {
 	r := New()
 	for i := range es {
-		if err := es[i].Verify(); err != nil && !tlog.IsPendingQuorum(err) {
+		if err := es[i].Verify(); err != nil && !tlog.Unattested(err) {
 			return nil, err
 		}
 		r.Apply(es[i])

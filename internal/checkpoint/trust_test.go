@@ -102,3 +102,22 @@ func TestCheckTrustGenesis(t *testing.T) {
 		t.Fatalf("outsider --genesis past genesis: %v", err)
 	}
 }
+
+// Checkpoints made before TELEGRAPH_COMMITTEE was set stay valid when
+// their committee is within the list (the live network's upgrade path).
+func TestAllowlistKeepsExistingCheckpoints(t *testing.T) {
+	a, b, net, cp := quorateCP(t)
+	third := actorNew(t)
+	tlog.SetCommittee([][]byte{a.pub, b.pub, third.pub})
+	t.Cleanup(func() { tlog.SetCommittee(nil) })
+	if rep := Audit(net); rep.Diverged || rep.OffCommittee != 0 || rep.PendingCP != 0 {
+		t.Fatalf("existing checkpoint under a superset allowlist: %+v", rep)
+	}
+	if tr, _, err := CheckTrust(storeOf(net), a.pub, cp.HashHex(), false); err != nil || tr != TrustOK {
+		t.Fatalf("pin under allowlist: %v %v", tr, err)
+	}
+	tlog.SetCommittee([][]byte{a.pub, third.pub})
+	if rep := Audit(net); rep.OffCommittee != 1 {
+		t.Fatalf("checkpoint naming a delisted key still attests: %+v", rep)
+	}
+}

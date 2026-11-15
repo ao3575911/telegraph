@@ -126,7 +126,7 @@ func (s *Syncer) IngestText(text string) (bool, error) {
 	if err != nil {
 		return true, fmt.Errorf("reassembled entry failed decode: %w", err)
 	}
-	if err := e.Verify(); err != nil && !tlog.IsPendingQuorum(err) {
+	if err := e.Verify(); err != nil && !tlog.Unattested(err) {
 		return true, fmt.Errorf("reassembled entry failed verify: %w", err)
 	}
 	if tlog.OldEntry(e, s.now()) && !s.Store.Seen[e.HashHex()] {
@@ -377,8 +377,10 @@ func (s *Syncer) MaybeCoSign() int {
 		if e.Payload.Kind != tlog.KindCheckpoint {
 			continue
 		}
-		if len(e.Payload.Comm) > 1 && e.Verify() == nil {
+		if err := e.Verify(); len(e.Payload.Comm) > 1 && err == nil {
 			continue // fully quorumed already
+		} else if errors.Is(err, tlog.ErrOffCommittee) {
+			continue // outside the committee allowlist: never attests
 		}
 		if bytes.Equal(e.PubKey, s.pub()) {
 			continue // we issued it; our signature is already the primary one
@@ -496,7 +498,7 @@ func (s *Syncer) GenesisSync(winSec int) (int, error) {
 			checkpoint.InCommittee(e.Payload.Comm, s.pub()) {
 			continue
 		}
-		if err := e.Verify(); err == nil || tlog.IsPendingQuorum(err) {
+		if err := e.Verify(); err == nil || tlog.Unattested(err) {
 			s.Store.RollbackStage()
 			return 0, ErrGenesisHasCP
 		}

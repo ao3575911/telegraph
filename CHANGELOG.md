@@ -8,6 +8,16 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`TELEGRAPH_COMMITTEE`: committee allowlist (protocol-affecting:
+  configure every node identically and restart them together).** Any key
+  that wrote a single entry could be picked for the 2-of-3 checkpoint
+  committee. With the allowlist set, only listed keys are issuers; a
+  checkpoint naming or signed by another key is kept for chain continuity
+  but attests nothing (`ErrOffCommittee`: never the latest checkpoint, a
+  pin or a finality witness; `audit` reports it). Existing checkpoints stay
+  valid when their committee is within the list. `config` and `committee`
+  show the allowlist; a serving node without one logs a warning.
+
 - `TELEGRAPH_REGISTER_BOT` / `--register-bot`: a node with bot
   registration off names the bot that holds handles (e.g.
   `@dsmdioefncoedcbot`). Its `/register`, `/revoke`, `/card`, `/start`,
