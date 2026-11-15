@@ -1,0 +1,7 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              10000000
+gen        progress                           1000000 (rss=3062568 kB peak=3062568 kB heap=6040MiB)
+gen        progress                           2000000 (rss=4924852 kB peak=4924852 kB heap=5516MiB)
+runtime: out of memory: cannot allocate 4194304-byte block (8002076672 in use)
+fatal error: out of memory

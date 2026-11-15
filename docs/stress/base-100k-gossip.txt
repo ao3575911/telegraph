@@ -1,0 +1,11 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              100000
+gen        keygen+sign                        100000 in 547ms = 182768 ops/s
+gen        avg entry JSON bytes               317
+gen        avg TGP1 frames/entry              1
+gen        mem                                rss=127776 kB peak=127776 kB heap=100MiB
+gossip     A publish to FileBus               20000 in 156ms = 128524 ops/s err=<nil>
+gossip     B ingest via Syncer+save           20000 in 10m13.132s = 33 ops/s (20000/20000)
+gossip     mem                                rss=256536 kB peak=315232 kB heap=192MiB
+end        mem                                rss=256544 kB peak=315232 kB heap=192MiB

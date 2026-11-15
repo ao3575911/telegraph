@@ -1,0 +1,56 @@
+env        cpus                               8
+env        go                                 go1.27.3
+env        users                              1000
+gen        keygen+sign                        1000 in 7ms = 138126 ops/s
+gen        avg entry JSON bytes               315
+gen        avg TGP1 frames/entry              1
+gen        mem                                rss=12724 kB peak=12724 kB heap=2MiB
+ingest     done                               1000 in 46ms = 21795 ops/s
+ingest     latency                            p50=42µs p99=90µs max=528µs (n=1000)
+ingest     mem                                rss=13740 kB peak=13740 kB heap=2MiB
+save       full rewrite                       4ms
+save       data.json size                     522841 bytes (0.5 MiB, 523 B/entry)
+save       mem                                rss=13892 kB peak=13952 kB heap=2MiB
+load       store.Open                         3ms (1000 entries)
+load       mem                                rss=13360 kB peak=13952 kB heap=3MiB
+registry   Registry() full verify+fold        2ms err=<nil> heads=1000
+registry   mem                                rss=14192 kB peak=14192 kB heap=3MiB
+resolve    done                               500 in 6ms = 77715 ops/s
+resolve    latency                            p50=12µs p99=19µs max=81µs (n=500)
+audit      checkpoint.Audit                   4ms sigOK=1000 orphans=0
+checkpoint ChainHeads                         1ms (1000 heads)
+checkpoint merkle.Root                        1ms
+checkpoint SelectCommittee                    1ms
+checkpoint sign+cosign 2-of-3                 1ms
+checkpoint verify                             1ms err=<nil>
+checkpoint checkpoint entry size              67684 bytes, 25 TGP1 frames
+checkpoint publish @20 msg/min                1m15s
+checkpoint DumpVerdict (pin check)            6ms ok=true 
+checkpoint mem                                rss=15528 kB peak=15528 kB heap=4MiB
+merge      Merge 3 nodes                      1ms all=1000 heads=1000
+merge      order-independent & complete       true
+merge      mem                                rss=16492 kB peak=16492 kB heap=4MiB
+gossip     A publish to FileBus               1000 in 8ms = 123692 ops/s err=<nil>
+gossip     B ingest via Syncer+save           1000 in 13ms = 75616 ops/s (1000/1000)
+gossip     mem                                rss=16412 kB peak=16412 kB heap=4MiB
+swap       build 4 entries x swaps            500 in 62ms = 8010 ops/s
+swap       resolve after swap                 p50=137µs p99=173µs max=204µs (n=200)
+swap       wrong owner after swap             0 of 200
+bot        done                               1000 in 206ms = 4853 ops/s
+bot        latency                            p50=165µs p99=640µs max=957µs (n=1000)
+bot        register failures                  0
+bot        store entries after                2000
+bot-res    done                               50 in 9ms = 5785 ops/s
+bot-res    latency                            p50=22µs p99=60µs max=7.534ms (n=50)
+bot-stats  done                               20 in 10ms = 2092 ops/s
+bot-stats  latency                            p50=374µs p99=943µs max=1.07ms (n=20)
+bot        4th handle refused (cap 3)         true
+bot        rate limit 20 msgs burst           answered=5 notices=1 dropped=14
+bot        20k distinct chats /version        20000 in 874ms = 22889 ops/s
+bot        limit bypass via 10k-chat flood    victim answered 5 then 0 within one window (limit 5 per 30 s; second > 0 means bypass)
+bot        mem                                rss=17412 kB peak=21248 kB heap=4MiB
+telegram   messages to publish N entries      1000
+telegram   publish time @20 msg/min/channel   50m0s
+telegram   bootstrap /dump replay @20 msg/min 50m0s
+telegram   channel bytes (base64)             0.5 MiB
+end        mem                                rss=17420 kB peak=21248 kB heap=6MiB

@@ -6,6 +6,44 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `/stats` in the bot: active, revoked and total handles, registrars,
+  nodes online, swaps, checkpoints, your handles on this node, and how many
+  early-adopter spots are left. `/register` now tells you your handle's
+  number on the network, with a badge for the first 100 (Founding 100) and
+  the first 1000 (Early adopter).
+- `cmd/stress`, a load harness that drives the real packages at 1k to
+  10M users, and fuzz targets for frame reassembly, entry decoding and bot
+  commands. Results are in `docs/STRESS-REPORT.md`.
+
+### Fixed
+
+- Two crafted channel posts could crash every node: frames for one entry
+  that disagreed on the part count indexed past the buffer, and a huge
+  part count allocated memory up front. Reassembly is now bounded
+  (32768 parts, 512 unfinished entries, 128 MiB).
+- A failed send (Telegram 429, network outage) marked entries as published,
+  so they never reached the channel. They now stay pending and the serving
+  loop retries them.
+- A flood of messages from 10,000 new chats reset every chat's rate limit.
+  Only expired chats are pruned now.
+- `data.json` is written atomically (temporary file, sync, rename), so a
+  crash or full disk mid-write no longer corrupts the store. It is also
+  written compact, about 17% smaller.
+
+### Performance
+
+- Admitting an entry is O(1) instead of a scan of the whole log, so a node
+  ingesting 100k entries takes 4.6 s instead of an estimated 7 minutes;
+  bootstrap staging is linear too.
+- Gossip ingest saves `data.json` once per batch instead of once per entry
+  (20k entries over the file bus: 10 min 13 s before, 0.7 s now). Idle
+  polls no longer rewrite the file.
+- Successful signature checks are memoised. Bot lookups no longer
+  re-verify the whole log, and the checkpoint audit is cached between log
+  changes: `/register` on a 100k-entry node went from 5.7 s to 8.5 ms (p50).
+
 ## [0.2.2] - 2026-11-15
 
 ### Added
