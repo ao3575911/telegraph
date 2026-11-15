@@ -56,6 +56,7 @@ type Payload struct {
 	Count  int64    `json:"mc,omitempty"` // covered entry count
 	Comm   [][]byte `json:"cm,omitempty"` // committee pubkeys
 	PrevCP string   `json:"pc,omitempty"` // previous checkpoint hash hex
+	Heads  []string `json:"hd,omitempty"` // covered chain heads, hex (checkpoints, v0.2.0+)
 
 	Pin    string `json:"pt,omitempty"` // issuer's trusted root (heartbeats)
 	SwapID string `json:"sid,omitempty"`

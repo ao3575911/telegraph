@@ -26,6 +26,8 @@ type Report struct {
 	RootOk, CountOk, CommitteeOk, ChainOk bool
 	ChainGaps                             []string
 	Uncovered                             int
+	Late                                  int // uncovered but stamped before the checkpoint (delivered late)
+	Missing                               int // covered chain links absent locally (sync incomplete)
 	PendingCP                             int // checkpoints still awaiting co-signatures
 	Diverged                              bool
 }
@@ -73,18 +75,21 @@ func Audit(entries []tlog.Entry) Report {
 	rep.ClaimedRoot = latest.Payload.Root
 	rep.ClaimedCount = latest.Payload.Count
 
-	var covered []tlog.Entry
-	for i := range logEntries {
-		if logEntries[i].Payload.TS < latest.Payload.TS { // see Covered
-			covered = append(covered, logEntries[i])
-		}
-	}
+	covered, missing := CoveredBy(latest, valid)
+	rep.Missing = missing
 	rep.CoveredCount = len(covered)
 	rep.CoveredRoot = merkle.Root(Hashes(covered))
 	for i := range covered {
 		rep.CoveredHashes[covered[i].HashHex()] = true
 	}
 	rep.Uncovered = len(logEntries) - len(covered)
+	if len(latest.Payload.Heads) > 0 {
+		for i := range logEntries {
+			if !rep.CoveredHashes[logEntries[i].HashHex()] && logEntries[i].Payload.TS < latest.Payload.TS {
+				rep.Late++
+			}
+		}
+	}
 
 	rep.RootOk = rep.CoveredRoot == rep.ClaimedRoot
 	rep.CountOk = int64(rep.CoveredCount) == rep.ClaimedCount
