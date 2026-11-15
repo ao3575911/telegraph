@@ -38,7 +38,7 @@ step ok alice version
 step ok alice register --handle alice@nym --did did:key:alice
 step ok bob register --handle bob@nym --did did:key:bob
 step ok carol register --handle carol@nym --did did:key:carol
-step err carol register --handle x@nym
+step err carol register --did did:key:x # no --handle
 for n in alice bob carol alice bob carol; do step ok $n sync --secs 0 --genesis; done
 SYNC1="alice $(entries alice) · bob $(entries bob) · carol $(entries carol)"
 step ok alice resolve bob@nym
@@ -132,7 +132,7 @@ Three nodes (alice, bob, carol) ran as separate processes with separate
 | Fresh node bootstrapping with the pin | \`$(echo "$FRESH" | tail -1)\` |
 
 "Expected" includes refusals the CLI should make: registering without
-\`--did\`, scanning a card before it is attested, claiming before the
+\`--handle\`, scanning a card before it is attested, claiming before the
 counterparty has locked, reclaiming before expiry, using a node before
 \`init\`, scanning a card issued before its handle was swapped (STALE),
 syncing with neither \`--pin\` nor \`--genesis\` (even after registering

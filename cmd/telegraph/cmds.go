@@ -45,13 +45,16 @@ func appendOwn(st *store.Store, e *tlog.Entry) {
 func doRegister(dir string, args []string) {
 	fs := flag.NewFlagSet("register", flag.ExitOnError)
 	handle := fs.String("handle", "", "handle, e.g. alice@nym")
-	did := fs.String("did", "", "DID or DID document hash")
+	did := fs.String("did", "", "DID to bind (default: did:key of this node's key)")
 	_ = fs.Parse(args)
-	if *handle == "" || *did == "" {
-		die(errors.New("both --handle and --did are required"))
+	if *handle == "" {
+		die(errors.New("--handle is required"))
 	}
 	dieOn(tlog.ValidHandle(*handle))
 	priv := mustKey(dir)
+	if *did == "" {
+		*did = keyDID(pubOf(priv))
+	}
 	st := mustStore(dir)
 	dieOn(mayWrite(st, *handle, pubOf(priv), false))
 	nonce := make([]byte, 16)
@@ -118,6 +121,22 @@ func doResolve(dir, handle string) {
 		die(fmt.Errorf("local log failed verification: %w", err))
 	}
 	e, status, ok := reg.Resolve(handle)
+	if jsonMode {
+		v := map[string]any{"handle": handle, "registered": ok && e.Payload.Kind != tlog.KindRevoke,
+			"revoked": ok && e.Payload.Kind == tlog.KindRevoke}
+		if ok {
+			v["status"], v["owner"], v["entry"] = status.String(), e.KeyHex(), e.HashHex()
+			v["since"] = time.Unix(e.Payload.TS, 0).UTC().Format(time.RFC3339)
+			if e.Payload.Kind == tlog.KindRegister {
+				v["did"] = e.Payload.DID
+			}
+		}
+		emitJSON(v)
+		if !ok || e.Payload.Kind == tlog.KindRevoke {
+			os.Exit(1)
+		}
+		return
+	}
 	switch {
 	case !ok:
 		out.Warn("%s unregistered", out.Bold(handle))
@@ -144,10 +163,34 @@ func doVerify(dir, handle string) {
 	dieOn(err)
 	e, status, ok := reg.Resolve(handle)
 	if !ok {
-		out.Fail("%s UNREGISTERED", out.Bold(handle))
+		if jsonMode {
+			emitJSON(map[string]any{"handle": handle, "attestation": "UNREGISTERED"})
+		} else {
+			out.Fail("%s UNREGISTERED", out.Bold(handle))
+		}
 		os.Exit(1)
 	}
 	rep := checkpoint.Audit(st.Entries)
+	if jsonMode {
+		att, cp := "UNCOVERED", ""
+		switch {
+		case rep.Diverged:
+			att = "DIVERGED"
+		case rep.NoCheckpoint:
+			att = "UNATTESTED"
+		case rep.CoveredHashes[e.HashHex()]:
+			att = "ATTESTED"
+		}
+		if rep.CP != nil {
+			cp = rep.CP.HashHex()
+		}
+		emitJSON(map[string]any{"handle": handle, "did": e.Payload.DID, "status": status.String(),
+			"owner": e.KeyHex(), "entry": e.HashHex(), "attestation": att, "checkpoint": cp})
+		if rep.Diverged {
+			os.Exit(2)
+		}
+		return
+	}
 	head := fmt.Sprintf("%s → %s  %s  %s", out.Bold(handle), e.Payload.DID,
 		out.Cyan("["+status.String()+"]"), out.Dim("owner "+short(e.KeyHex())))
 	switch {
@@ -171,6 +214,26 @@ func doAudit(dir string) {
 	st := mustStore(dir)
 	rep := checkpoint.Audit(st.Entries)
 	bad := len(rep.SigBad) > 0 || len(rep.Orphans) > 0
+	if jsonMode {
+		v := map[string]any{"entries": rep.Total, "signaturesOk": rep.SigOK, "badSignatures": nonNil(rep.SigBad),
+			"orphans": nonNil(rep.Orphans), "forks": nonNil(rep.ChForks), "pendingCheckpoints": rep.PendingCP,
+			"offCommittee": rep.OffCommittee, "checkpoint": nil, "diverged": rep.Diverged, "ok": !rep.Diverged && !bad}
+		if cp := rep.CP; cp != nil {
+			var comm []string
+			for _, c := range cp.Payload.Comm {
+				comm = append(comm, fmt.Sprintf("%x", c))
+			}
+			v["checkpoint"] = map[string]any{"hash": cp.HashHex(), "root": rep.ClaimedRoot, "count": rep.ClaimedCount,
+				"committee": nonNil(comm), "signatures": 1 + len(cp.CoSigs), "rootOk": rep.RootOk, "countOk": rep.CountOk,
+				"committeeOk": rep.CommitteeOk, "chainOk": rep.ChainOk, "chainGaps": nonNil(rep.ChainGaps),
+				"uncovered": rep.Uncovered, "late": rep.Late, "missing": rep.Missing}
+		}
+		emitJSON(v)
+		if rep.Diverged || bad {
+			os.Exit(1)
+		}
+		return
+	}
 	summary := fmt.Sprintf("audit  %d entries · %d signatures ok · %d bad",
 		rep.Total, rep.SigOK, len(rep.SigBad))
 	if rep.OffCommittee > 0 {
@@ -441,6 +504,13 @@ func doPeers(dir string) {
 func doNet(dir string) {
 	st := mustStore(dir)
 	ns := checkpoint.GatherStats(st, time.Now().Unix())
+	if jsonMode {
+		emitJSON(map[string]any{"health": ns.Health, "pin": ns.Pinned, "pinAgeSecs": ns.PinAge,
+			"lastCheckpointAgeSecs": ns.LastCPAge, "lastCheckpointChainsToPin": ns.LastCPChains,
+			"peers": ns.PeerTotal, "peersLive": ns.PeerLive, "peersDead": ns.PeerDead,
+			"pinDriftPct": ns.PinDriftPct, "foreignPins": nonNil(ns.DriftedPins)})
+		return
+	}
 	health := ns.Health
 	switch health {
 	case "OK":
@@ -594,4 +664,12 @@ func doRedactDIDs(dir string, args []string) {
 	} else {
 		out.Info("%d handles have a did:tg:<user id> DID: rerun with --apply (stop the serving node first)", len(hs))
 	}
+}
+
+// nonNil returns s, or an empty slice so JSON shows [] rather than null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

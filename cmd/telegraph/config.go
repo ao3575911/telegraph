@@ -136,6 +136,10 @@ func setupLogging() {
 // `config key` prints only this node's public key (for TELEGRAPH_PEERS).
 func doConfig(dir string, args []string) {
 	if len(args) == 1 && args[0] == "key" {
+		if jsonMode {
+			emitJSON(map[string]string{"key": fmt.Sprintf("%x", pubOf(mustKey(dir)))})
+			return
+		}
 		out.Println(fmt.Sprintf("%x", pubOf(mustKey(dir))))
 		return
 	}
@@ -168,7 +172,7 @@ func doConfig(dir string, args []string) {
 		dieOn(err)
 		key = fmt.Sprintf("%x", pubOf(k))
 	}
-	out.KV([][2]string{
+	kv := [][2]string{
 		{"version", Version},
 		{"home", dir},
 		{"node key", key},
@@ -181,7 +185,16 @@ func doConfig(dir string, args []string) {
 		{"bot register", fmt.Sprint(os.Getenv("TELEGRAPH_BOT_REGISTER") == "1")},
 		{"register bot", rb},
 		{"log", envOr("TELEGRAPH_LOG_FORMAT", "text") + "/" + envOr("TELEGRAPH_LOG_LEVEL", "info")},
-	})
+	}
+	if jsonMode {
+		m := map[string]string{}
+		for _, p := range kv {
+			m[strings.ReplaceAll(p[0], " ", "_")] = p[1]
+		}
+		emitJSON(m)
+		return
+	}
+	out.KV(kv)
 }
 
 // doCommittee shows who signs the next checkpoint and whether this node
@@ -198,6 +211,27 @@ func doCommittee(dir string) {
 	isIssuer := false
 	for _, p := range issuers {
 		isIssuer = isIssuer || string(p) == string(me)
+	}
+	if jsonMode {
+		allow, _ := committeeKeys()
+		var al []string
+		for _, k := range allow {
+			al = append(al, hex.EncodeToString(k))
+		}
+		v := map[string]any{"thisNode": hex.EncodeToString(me), "allowlist": nonNil(al), "issuers": len(issuers),
+			"isIssuer": isIssuer, "entries": len(log), "committee": []any{}}
+		if len(log) > 0 {
+			comm := checkpoint.SelectCommittee(checkpoint.Target(merkle.Root(checkpoint.Hashes(log)), int64(len(log))), issuers)
+			var ms []any
+			for i, c := range comm {
+				k := hex.EncodeToString(c)
+				ms = append(ms, map[string]any{"rank": i, "key": k, "thisNode": string(c) == string(me),
+					"peer": containsKey(peers, c), "status": checkpoint.PeerStatus(st, k, time.Now().Unix())})
+			}
+			v["committee"] = ms
+		}
+		emitJSON(v)
+		return
 	}
 	out.KV([][2]string{
 		{"this node", fmt.Sprintf("%x", me)},

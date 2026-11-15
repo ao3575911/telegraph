@@ -2,21 +2,25 @@
 
 ```
 telegraph <command> [flags]
+telegraph <command> -h      # that command's flags and details (also: telegraph help <command>)
 ```
+
+`--json` prints machine-readable JSON on stdout for `resolve`, `verify`,
+`audit`, `net`, `committee` and `config`; exit codes are unchanged.
 
 | Command | Flags | Does |
 |---|---|---|
 | `init` | | Create the identity key and local state in `TELEGRAPH_HOME` |
-| `register` | `--handle H --did D` | Claim a free handle for a DID, or change the DID of one you own (refused when another key owns it) |
+| `register` | `--handle H [--did D]` | Claim a free handle for a DID, or change the DID of one you own (refused when another key owns it). `--did` defaults to the `did:key` of this node's Ed25519 key |
 | `revoke` | `--handle H` | Revoke a handle you own (it becomes free) |
-| `resolve H` | | Handle → DID, owner and state; exits 1 if unregistered or revoked |
-| `verify H` | | `resolve` plus checkpoint attestation |
-| `audit` | | Check signatures, chains and the latest checkpoint |
+| `resolve H` | `--json` | Handle → DID, owner and state; exits 1 if unregistered or revoked |
+| `verify H` | `--json` | `resolve` plus checkpoint attestation |
+| `audit` | `--json` | Check signatures, chains and the latest checkpoint |
 | `sync` | `--secs N` (5), `--serve`, `--pin P`, `--genesis`, `--insecure-skip-pin`, `--bots`, `--channels`, `--bus`, `--checkpoint-only`, `--bot-register` | Publish pending entries and merge gossip, after the mandatory pin check; `--pin` joins a network (bootstraps), `--genesis` starts one with no checkpoint yet; `--insecure-skip-pin` skips the check with a warning; `--bot-register` lets Telegram users `/register` handles signed by this node |
 | `checkpoint` | | Issue a checkpoint if this node leads the committee, or as fallback #1/#2 when the leader is overdue |
 | `pin` | `--rotate` | Show the trust root, or advance it |
 | `peers` | | Known peers and liveness |
-| `net` | | Network health |
+| `net` | `--json` | Network health |
 | `card` | `--handle H` | Print the bio card line |
 | `attest` | `--line L` | Sign a card line |
 | `scan L` | | Verify a card line |
@@ -25,8 +29,8 @@ telegraph <command> [flags]
 | `swap claim` | `--sid ID` | Take the handle locked to you |
 | `swap reclaim` | `--sid ID` | Recover your handle after expiry |
 | `swap status` | `--sid ID` | Show locks, claims and reclaims |
-| `committee` | | The next checkpoint committee (leader, fallbacks), which are this node or a configured peer, and their liveness |
-| `config` | `[key]` | Effective node settings without secrets; `config key` prints this node's public key |
+| `committee` | `--json` | The next checkpoint committee (leader, fallbacks), which are this node or a configured peer, and their liveness |
+| `config` | `[key]`, `--json` | Effective node settings without secrets; `config key` prints this node's public key |
 | `redact-dids` | `--apply` | List (or, with `--apply`, update) handles this node holds for Telegram users whose DID is the pre-v0.3.1 `did:tg:<user id>`; stop the serving node first, then sync |
 | `version` | | Print the version |
 
