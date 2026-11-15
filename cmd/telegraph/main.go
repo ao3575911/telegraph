@@ -16,7 +16,7 @@ import (
 
 // Version is the release version, overridable at build time with
 // -ldflags "-X main.Version=...".
-var Version = "0.1.0"
+var Version = "0.2.0"
 
 const tagline = "decentralised handle registry gossiped over Telegram"
 
@@ -97,8 +97,8 @@ func usage(p *ui.Printer) {
 		{"resolve H", "handle → DID"},
 		{"verify H", "resolve + checkpoint attestation"},
 		{"audit", "check signatures, chains, checkpoints"},
-		{"sync [--serve] [--secs N]", "publish and merge gossip"},
-		{"checkpoint", "issue one if committee leader"},
+		{"sync [--serve] [--genesis]", "publish and merge gossip"},
+		{"checkpoint", "issue one if leader (or overdue fallback)"},
 		{"pin [--rotate]", "show or advance the trust root"},
 		{"peers", "known peers and liveness"},
 		{"net", "network health"},
