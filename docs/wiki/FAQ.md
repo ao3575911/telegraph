@@ -62,7 +62,7 @@ register can take over a handle) and checkpoints that grow with every user.
 **How do I install without Go?**
 `curl -fsSL https://raw.githubusercontent.com/ao3575911/telegraph/main/scripts/install.sh | sh`
 downloads the release for your OS, checks its SHA-256 and installs it to
-`~/.local/bin`. With Go, pin the version (`@v0.2.2`): `@latest` can lag
+`~/.local/bin`. With Go, pin the version (`@v0.2.3`): `@latest` can lag
 behind a new tag on the module proxy.
 
 **Can a swap leave one side without a handle?**
