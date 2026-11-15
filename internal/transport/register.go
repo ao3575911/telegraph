@@ -151,6 +151,15 @@ func (r *Responder) register(st *store.Store, in Incoming, arg string) Reply {
 		b.WriteString("The default DID contains your Telegram user id, and it is public. " +
 			"Send <code>/register " + strings.TrimSuffix(handle, "@"+Namespace) + " did:method:id</code> to use your own.\n\n")
 	}
+	if prev == nil {
+		if n := ordinal(st, handle); n > 0 {
+			if badge := Badge(n); badge != "" {
+				fmt.Fprintf(&b, "%s: handle #%d on the network.\n\n", badge, n)
+			} else {
+				fmt.Fprintf(&b, "Handle #%d on the network. /stats for more.\n\n", n)
+			}
+		}
+	}
 	b.WriteString("Publishing to the channel now. Anyone can /resolve it.")
 	return r.reply(in, b.String(), nil)
 }
@@ -190,10 +199,7 @@ func (r *Responder) revoke(st *store.Store, in Incoming, arg string) Reply {
 // returns the handle's current entry when this node holds it for user
 // (nil when the handle is free) or a refusal to send instead.
 func (r *Responder) checkOwner(st *store.Store, handle string, user int64) (*tlog.Entry, string) {
-	reg, err := st.Registry()
-	if err != nil {
-		return nil, "⚠️ This node's log failed verification. Try again later."
-	}
+	reg := lookup(st)
 	if owner, ok := st.Custody[handle]; ok && owner != user {
 		return nil, "<b>" + handle + "</b> is taken by another Telegram user."
 	}

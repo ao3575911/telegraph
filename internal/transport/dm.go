@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ao3575911/telegraph/internal/checkpoint"
+	"github.com/ao3575911/telegraph/internal/crdt"
 	"github.com/ao3575911/telegraph/internal/store"
 	"github.com/ao3575911/telegraph/internal/tlog"
 )
@@ -34,6 +35,7 @@ var Commands = []Command{
 	{"register", "name [did]", "Register name@nym, signed by this node for you"},
 	{"revoke", "name", "Revoke a handle you registered here"},
 	{"status", "", "Node and network status"},
+	{"stats", "", "Network counts and early-adopter spots left"},
 	{"pin", "", "The network's trust pin"},
 	{"about", "", "What Telegraph is and how it works"},
 	{"version", "", "Node software version"},
@@ -82,6 +84,38 @@ type Responder struct {
 	hits     map[int64][]time.Time
 	notified map[int64]bool
 	pending  map[int64]ask // chats asked a question, awaiting the answer
+	pruned   time.Time     // last limiter prune
+
+	// auditKey/auditRep memoise checkpoint.Audit between log changes.
+	auditKey [3]int
+	auditSt  *store.Store
+	auditRep checkpoint.Report
+}
+
+// lookup is a resolver over the store's log. It skips the whole-log
+// re-verification st.Registry does: handshake.Owner verifies every entry
+// it folds for the handle asked about, which is all a lookup needs, and
+// one bad entry elsewhere no longer breaks every /resolve.
+func lookup(st *store.Store) *crdt.Registry { return &crdt.Registry{All: st.Entries} }
+
+// audit returns checkpoint.Audit for st, recomputed only when the log
+// grew or a checkpoint gained co-signatures. Audit is O(log) and used to
+// run on every /resolve and /status.
+func (r *Responder) audit(st *store.Store) checkpoint.Report {
+	cos, cps := 0, 0
+	for i := range st.Entries {
+		if st.Entries[i].Payload.Kind == tlog.KindCheckpoint {
+			cps++
+			cos += len(st.Entries[i].CoSigs)
+		}
+	}
+	key := [3]int{len(st.Entries), cps, cos}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.auditSt != st || r.auditKey != key {
+		r.auditRep, r.auditKey, r.auditSt = checkpoint.Audit(st.Entries), key, st
+	}
+	return r.auditRep
 }
 
 // ask is an open question to a chat: which command the answer is for.
@@ -109,10 +143,21 @@ func (r *Responder) allow(chat int64) (ok bool, notice time.Duration) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.hits == nil || len(r.hits) > 10000 {
-		r.hits, r.notified, r.pending = map[int64][]time.Time{}, map[int64]bool{}, map[int64]ask{}
+	if r.hits == nil {
+		r.hits, r.notified = map[int64][]time.Time{}, map[int64]bool{}
 	}
 	now := r.now()
+	if _, known := r.hits[chat]; !known && len(r.hits) >= limiterChats {
+		// Prune only chats whose window has passed. Clearing everything,
+		// as before v0.3.0, let a flood of new chats reset every limit.
+		if now.Sub(r.pruned) >= time.Second { // a flood must not make every message O(chats)
+			r.prune(now, win)
+			r.pruned = now
+		}
+		if len(r.hits) >= limiterChats {
+			return false, 0 // flooded with live chats: refuse newcomers
+		}
+	}
 	kept := r.hits[chat][:0]
 	for _, t := range r.hits[chat] {
 		if now.Sub(t) < win {
@@ -131,6 +176,25 @@ func (r *Responder) allow(chat int64) (ok bool, notice time.Duration) {
 	r.notified[chat] = false
 	r.hits[chat] = append(kept, now)
 	return true, 0
+}
+
+// limiterChats bounds the chats the limiter tracks at once.
+const limiterChats = 10000
+
+// prune drops chats with no message inside win, and expired questions.
+// Caller holds mu.
+func (r *Responder) prune(now time.Time, win time.Duration) {
+	for c, ts := range r.hits {
+		if len(ts) == 0 || now.Sub(ts[len(ts)-1]) >= win {
+			delete(r.hits, c)
+			delete(r.notified, c)
+		}
+	}
+	for c, a := range r.pending {
+		if now.Sub(a.at) >= pendingFor {
+			delete(r.pending, c)
+		}
+	}
 }
 
 // Incoming is one user message as the responder sees it.
@@ -210,6 +274,8 @@ func (r *Responder) Handle(st *store.Store, in Incoming) (Reply, bool) {
 		return r.pin(st, in), true
 	case "status":
 		return r.status(st, in), true
+	case "stats":
+		return r.stats(st, in), true
 	case "about":
 		return r.about(in), true
 	case "version":
@@ -359,11 +425,7 @@ func (r *Responder) resolve(st *store.Store, in Incoming, handle string) Reply {
 	case !looksLikeHandle(handle):
 		return r.reply(in, "<code>"+esc(clip(handle, 64))+"</code> is not a handle. Handles look like <code>alice@nym</code>.", nil)
 	}
-	reg, err := st.Registry()
-	if err != nil {
-		return r.reply(in, "⚠️ This node's log failed verification. Try again later.", nil)
-	}
-	e, status, ok := reg.Resolve(handle)
+	e, status, ok := lookup(st).Resolve(handle)
 	if !ok {
 		return r.reply(in, "<b>"+esc(handle)+"</b> is not registered.", nil)
 	}
@@ -374,7 +436,7 @@ func (r *Responder) resolve(st *store.Store, in Incoming, handle string) Reply {
 	if e.Payload.Kind == tlog.KindRegister {
 		did = "<code>" + esc(clip(e.Payload.DID, 200)) + "</code>"
 	}
-	rep := checkpoint.Audit(st.Entries)
+	rep := r.audit(st)
 	var att string
 	switch {
 	case rep.Diverged:
@@ -419,14 +481,10 @@ func (r *Responder) status(st *store.Store, in Incoming) Reply {
 		b.WriteString("This node has no entries yet.")
 		return r.reply(in, b.String(), nil)
 	}
-	reg, _ := st.Registry()
-	handles := 0
-	if reg != nil {
-		handles = len(reg.Head)
-	}
+	ns := Stats(st, r.now())
 	fmt.Fprintf(&b, "Entries %d · handles %d · issuers %d\n",
-		len(st.Entries), handles, len(checkpoint.Issuers(st.Entries)))
-	rep := checkpoint.Audit(st.Entries)
+		len(st.Entries), ns.Active+ns.Revoked, len(checkpoint.Issuers(st.Entries)))
+	rep := r.audit(st)
 	if rep.NoCheckpoint {
 		b.WriteString("Checkpoint: none yet")
 		return r.reply(in, b.String(), nil)
