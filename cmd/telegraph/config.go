@@ -28,6 +28,8 @@ import (
 //	TELEGRAPH_PEERS        hex public keys of the other committee nodes
 //	TELEGRAPH_NODE_NAME    label for logs
 //	TELEGRAPH_BOT_REGISTER 1: let Telegram users /register (custodial)
+//	TELEGRAPH_REGISTER_BOT on a node without bot registration, the bot
+//	                       (@username) users are sent to for /register and /card
 //	TELEGRAPH_LOG_FORMAT   text (default) or json
 //	TELEGRAPH_LOG_LEVEL    debug, info (default), warn, error
 
@@ -58,6 +60,22 @@ func channelURL() (string, error) {
 	rest, ok := strings.CutPrefix(u, "https://t.me/")
 	if !ok || rest == "" || strings.HasPrefix(rest, "+") || strings.HasPrefix(rest, "joinchat") || strings.ContainsAny(rest, "/?#") {
 		return "", fmt.Errorf("TELEGRAPH_CHANNEL_URL %q: want a public https://t.me/<username> link, not an invite link", u)
+	}
+	return u, nil
+}
+
+// registerBot validates TELEGRAPH_REGISTER_BOT (or the flag value v when
+// set): a Telegram bot username, with or without the @.
+func registerBot(v string) (string, error) {
+	if v == "" {
+		v = os.Getenv("TELEGRAPH_REGISTER_BOT")
+	}
+	u := strings.TrimPrefix(strings.TrimSpace(v), "@")
+	if u == "" {
+		return "", nil
+	}
+	if !transport.ValidBotUsername(u) {
+		return "", fmt.Errorf("TELEGRAPH_REGISTER_BOT %q: want a bot username such as @telegraph_bot", v)
 	}
 	return u, nil
 }
@@ -112,6 +130,15 @@ func doConfig(dir string, args []string) {
 	if err != nil {
 		cu = "error: " + err.Error()
 	}
+	rb, err := registerBot("")
+	switch {
+	case err != nil:
+		rb = "error: " + err.Error()
+	case rb == "":
+		rb = "-"
+	default:
+		rb = "@" + rb
+	}
 	peers, err := peerKeys()
 	ps := fmt.Sprintf("%d", len(peers))
 	if err != nil {
@@ -133,6 +160,7 @@ func doConfig(dir string, args []string) {
 		{"channel url", cu},
 		{"peers", ps},
 		{"bot register", fmt.Sprint(os.Getenv("TELEGRAPH_BOT_REGISTER") == "1")},
+		{"register bot", rb},
 		{"log", envOr("TELEGRAPH_LOG_FORMAT", "text") + "/" + envOr("TELEGRAPH_LOG_LEVEL", "info")},
 	})
 }

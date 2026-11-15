@@ -6,6 +6,28 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `TELEGRAPH_REGISTER_BOT` / `--register-bot`: a node with bot
+  registration off names the bot that holds handles (e.g.
+  `@dsmdioefncoedcbot`). Its `/register`, `/revoke`, `/card`, `/start`,
+  `/help`, unknown-handle replies, command menu and bot descriptions point
+  users there, with an Open button, instead of the generic CLI text.
+  Ignored when the node registers itself. `telegraph config` shows it.
+
+### Changed
+
+- `telegraph resolve` exits 1 when the handle is unregistered or revoked
+  (it printed the warning but exited 0), so scripts can test it.
+- On a node with registration off, `/register` and `/revoke` in a group
+  get the "this node does not hold handles" reply instead of "DM me".
+
+### Fixed
+
+- `scripts/node-join.sh` skipped registering the node's handle, because
+  `resolve` exited 0 for an unregistered handle; the node never became an
+  issuer and could not join the committee. It now checks the output too.
+
 ## [0.3.0] - Unreleased
 
 Production readiness. **Protocol change: upgrade every node** (see

@@ -326,8 +326,8 @@ func TestSetupMenuMatchesHelp(t *testing.T) {
 	for _, s := range sets {
 		scopes = append(scopes, s["scope"].(map[string]any)["type"].(string))
 		cmds := s["commands"].([]any)
-		if len(cmds) != len(MenuCommands(sy.DM.Priv != nil)) {
-			t.Fatalf("menu has %d commands, want %d", len(cmds), len(MenuCommands(sy.DM.Priv != nil)))
+		if len(cmds) != len(sy.DM.Menu()) {
+			t.Fatalf("menu has %d commands, want %d", len(cmds), len(sy.DM.Menu()))
 		}
 		for _, c := range cmds {
 			name := c.(map[string]any)["command"].(string)

@@ -109,6 +109,10 @@ func (r *Responder) dmOnly(in Incoming, cmd string) Reply {
 
 // noRegister is the reply when this node has bot registration turned off.
 func (r *Responder) noRegister(in Incoming) Reply {
+	if ref := r.referral(); ref != "" {
+		return r.reply(in, "This node verifies and gossips the registry but does not hold handles. "+
+			"To claim name@nym, open "+esc(ref)+" and send /register <i>name</i>.", r.referralButtons())
+	}
 	return r.reply(in, "This node does not hold handles for Telegram users. "+
 		"Register with your own key using the CLI: <a href=\""+DefaultNodeURL+"\">install</a>.", nil)
 }
@@ -117,10 +121,10 @@ const registerUsage = "/register name  or  /register name did:method:id"
 
 func (r *Responder) register(st *store.Store, in Incoming, arg string) Reply {
 	switch {
-	case !in.Private:
-		return r.dmOnly(in, "register")
 	case r.Priv == nil:
 		return r.noRegister(in)
+	case !in.Private:
+		return r.dmOnly(in, "register")
 	}
 	user := sender(in)
 	handle, did, defaulted, err := parseRegister(arg, user)
@@ -187,10 +191,10 @@ func (r *Responder) register(st *store.Store, in Incoming, arg string) Reply {
 
 func (r *Responder) revoke(st *store.Store, in Incoming, arg string) Reply {
 	switch {
-	case !in.Private:
-		return r.dmOnly(in, "revoke")
 	case r.Priv == nil:
 		return r.noRegister(in)
+	case !in.Private:
+		return r.dmOnly(in, "revoke")
 	}
 	f := strings.Fields(arg)
 	if len(f) != 1 {

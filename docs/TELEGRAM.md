@@ -35,7 +35,11 @@ a short pointer to `/help`; unknown commands say so.
 
 Off by default. A node operator turns it on with
 `telegraph sync --serve --bot-register` (or `TELEGRAPH_BOT_REGISTER=1`);
-otherwise `/register` says the node does not register handles.
+otherwise `/register` says the node does not register handles. A node
+with registration off can name the bot that does with
+`TELEGRAPH_REGISTER_BOT=@dsmdioefncoedcbot` (or `--register-bot`): then
+`/register`, `/card`, the command menu and the bot description send users
+there, with an Open button.
 
 - **Custodial.** The node signs the register entry with its own key and
   gossips it, so the handle resolves everywhere and `/resolve` shows the

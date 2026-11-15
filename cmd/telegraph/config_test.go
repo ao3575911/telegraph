@@ -65,3 +65,26 @@ func TestBotTokensSources(t *testing.T) {
 		t.Fatalf("file: %v %s %v", ts, src, err)
 	}
 }
+
+func TestRegisterBot(t *testing.T) {
+	for v, want := range map[string]string{
+		"": "", "@dsmdioefncoedcbot": "dsmdioefncoedcbot", "dsmdioefncoedcbot": "dsmdioefncoedcbot",
+		" @Telegraph_Bot ": "Telegraph_Bot", "https://t.me/x_bot": "!", "notabotx": "!", "@a-bot": "!",
+	} {
+		t.Setenv("TELEGRAPH_REGISTER_BOT", v)
+		got, err := registerBot("")
+		if want == "!" {
+			if err == nil {
+				t.Errorf("%q accepted as %q", v, got)
+			}
+			continue
+		}
+		if err != nil || got != want {
+			t.Errorf("%q: got %q, %v; want %q", v, got, err, want)
+		}
+	}
+	t.Setenv("TELEGRAPH_REGISTER_BOT", "envbot")
+	if got, _ := registerBot("@flagbot"); got != "flagbot" {
+		t.Errorf("flag did not win over env: %q", got)
+	}
+}
